@@ -1,70 +1,89 @@
+version: "3.8"
+
 services:
-  api:
+  # ================================
+  # SAIA Insurance Broker API
+  # ================================
+  saia-api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: postgresql_chat_api
-    env_file:
-      - .env
+    container_name: saia_insurance_api
+    ports:
+      - "3300:3300"
     environment:
-      # API Settings
-      - API_TITLE=PostgreSQL Chat API
-      - API_VERSION=1.0.0
-      - API_PREFIX=/api/v1
-      - DEBUG=false
-      - LOG_LEVEL=INFO
+      - API_TITLE=SAIA Insurance Broker API
+      - API_VERSION=2.0.0
+      - DEBUG=true
+      - PORT=3300
 
-      # Security
-      - API_KEY=${API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
+      # Database
+      - DB_HOST=saia-postgres
+      - DB_PORT=5432
+      - DB_NAME=saia_insurance
+      - DB_USER=postgres
+      - DB_PASSWORD=saia_secure_password
 
-      # PostgreSQL (External)
-      - POSTGRESQL_URL=${POSTGRESQL_URL:-}
-      - POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE:-}
-      - DB_HOST=${DB_HOST:-localhost}
-      - DB_PORT=${DB_PORT:-5432}
-      - DB_NAME=${DB_NAME:-postgres}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-}
+      # MongoDB
+      - MONGO_URI=mongodb://saia-mongo:27017/
+      - MONGO_DB_NAME=saia_conversations
 
-      # MongoDB (External)
-      - MONGO_URI=${MONGO_URI:-mongodb://localhost:27017/}
-      - MONGO_DB_NAME=${MONGO_DB_NAME:-chat_db}
+      # LLM (use your keys)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
 
-      # LLM - Gemini
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=gemini-2.0-flash
-      - GEMINI_TEMPERATURE=0.3
-
-      # LLM - OpenAI (Optional)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - API_KEY_OPENAI=${API_KEY_OPENAI}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4}
-
-      # SQL Settings
-      - SQL_TIMEOUT_SECONDS=30
-      - SQL_MAX_ROWS=1000
-
+    depends_on:
+      - saia-postgres
+      - saia-mongo
     volumes:
-      - exports_data:/app/exports
-      - charts_data:/app/charts/generated
-      - cache_data:/app/cache
-
+      - ./app:/app/app:ro
     restart: unless-stopped
+    networks:
+      - saia-network
 
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3300/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+  # ================================
+  # PostgreSQL Database
+  # ================================
+  saia-postgres:
+    image: postgres:15-alpine
+    container_name: saia_postgres
+    environment:
+      - POSTGRES_DB=saia_insurance
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=saia_secure_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - saia_postgres_data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    networks:
+      - saia-network
 
-    network_mode: "host"  # Use host network to access external databases
+  # ================================
+  # MongoDB (Conversations)
+  # ================================
+  saia-mongo:
+    image: mongo:7
+    container_name: saia_mongo
+    ports:
+      - "27018:27017"
+    volumes:
+      - saia_mongo_data:/data/db
+    restart: unless-stopped
+    networks:
+      - saia-network
 
+# ================================
+# Volumes
+# ================================
 volumes:
-  exports_data:
-    driver: local
-  charts_data:
-    driver: local
-  cache_data:
-    driver: local
+  saia_postgres_data:
+  saia_mongo_data:
+
+    # ================================
+    # Networks
+    # ================================
+networks:
+  saia-network:
+    driver: bridge

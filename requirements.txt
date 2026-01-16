@@ -1,47 +1,45 @@
+# SAIA Insurance Broker Platform - Requirements
+# Python 3.11+
+
 # Core Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic>=2.7.4,<3.0.0  # Updated for langchain-core compatibility
+fastapi>=0.109.0
+uvicorn[standard]>=0.25.0
+pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
-# LangChain (Updated for pydantic v2 compatibility)
-langchain>=0.2.16
-langchain-openai>=0.1.23
-langchain-google-genai>=1.0.0
-langchain-community>=0.3.0
-langchain-core>=0.2.38
-langsmith>=0.1.129
-
 # Database
-sqlalchemy==2.0.23
-psycopg2-binary>=2.9.9
-pgvector==0.2.4
-motor==3.6.0  # MongoDB async driver (compatible with pymongo 4.10+)
+asyncpg>=0.29.0
+motor>=3.3.0
+pymongo>=4.6.0
 
-# RAG & Embeddings
-openai>=1.6.1,<2.0.0
-tiktoken==0.5.2
+# LLM Integration
+google-generativeai>=0.3.0
+openai>=1.10.0
+langchain>=0.1.0
+langchain-google-genai>=0.0.6
 
-# Security & Validation
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-sqlparse==0.4.4
-
-# Observability
-python-json-logger==2.0.7
-prometheus-client==0.19.0
+# Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+pyjwt>=2.8.0
 
 # Utilities
-python-dotenv==1.0.0
-tenacity==8.2.3
+python-dateutil>=2.8.0
+httpx>=0.26.0
+aiohttp>=3.9.0
 
-# Excel Export
-openpyxl==3.1.2
-pandas==2.1.4
-numpy==1.26.0
+# PDF Generation
+reportlab>=4.0.0
+weasyprint>=60.0
 
-# Visualization (Optional - PandasAI)
-# Note: pandasai 2.0.0 requires pandas 1.5.3 which doesn't compile on Python 3.13
-# For Python 3.13, use pandasai without duckdb dependency or wait for updated version
-# pandasai==2.0.0
-seaborn==0.13.2
+# Logging
+structlog>=24.1.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+httpx>=0.26.0
+
+# Development
+python-dotenv>=1.0.0
