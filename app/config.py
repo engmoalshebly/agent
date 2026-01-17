@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application Settings"""
     
     # API
-    API_TITLE: str = "SAIA Insurance Broker API"
+    API_TITLE: str = "SAIA - كونكر لوساطة التأمين | Bineyes"
     API_VERSION: str = "2.0.0"
     API_PREFIX: str = "/api/v1"
     DEBUG: bool = False

@@ -28,6 +28,7 @@ class UserIntent(str, Enum):
     CANCEL = "cancel"
     MODIFY = "modify"
     ASK_QUESTION = "ask_question"
+    ASK_HISTORY = "ask_history"  # استعلام عن السجل
     RESUME = "resume"
     UNKNOWN = "unknown"
 
@@ -187,7 +188,7 @@ class AIIntentAnalyzer:
 
 ## المطلوب - أرجع JSON فقط:
 {{
-    "intent": "greeting|ask_services|select_service|provide_profile_data|provide_vehicle_data|select_offer|confirm|reject|cancel|modify|ask_question|unknown",
+    "intent": "greeting|ask_services|select_service|provide_profile_data|provide_vehicle_data|select_offer|confirm|reject|cancel|modify|ask_question|ask_history|unknown",
     "confidence": 0.0-1.0,
     "extracted_data": {{
         "confirmation": true/false إذا كانت موافقة,
@@ -210,6 +211,7 @@ class AIIntentAnalyzer:
 ⚠️ مهم جداً:
 - افهم نية المستخدم من السياق حتى لو لم يستخدم كلمات محددة
 - استخرج جميع البيانات الموجودة في الرسالة
+- إذا سأل عن (تأميناتي/وثائقي/طلباتي/سجلي/بياناتي/فواتيري/حالة طلبي) = intent: "ask_history"
 - أرجع JSON فقط بدون أي نص إضافي"""
         
         return prompt

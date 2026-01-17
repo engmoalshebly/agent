@@ -2,7 +2,8 @@
  * API Client for SAIA Insurance Broker
  */
 
-const API_BASE = '/api/v1'
+// Use environment variable or default to relative path
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 
 async function request(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`

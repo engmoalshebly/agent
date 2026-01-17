@@ -135,77 +135,21 @@ class StageTransitionManager:
         data: Dict[str, Any]
     ) -> bool:
         """
-        معالجة النوايا الخاصة: إلغاء، تعديل، رجوع، طلب جديد
+        معالجة النوايا الخاصة - الاعتماد 100% على AI Intent
+        لا كلمات ثابتة - فقط تحليل data من AI
         """
-        # === طلب تأمين جديد (إعادة تهيئة) ===
-        new_request_words = [
-            "تأمين جديد", "طلب جديد", "سيارة ثانية", "سيارة أخرى",
-            "من البداية", "ابدأ من جديد", "طلب آخر", "تأمين ثاني",
-            "نبدأ من الصفر", "سيارة ثانيه"
-        ]
-        if any(w in message for w in new_request_words):
-            self._reset_for_new_request(context)  # يحافظ على الهوية
-            return True
-        
-        # === إعادة تهيئة بعد اكتمال الطلب ===
-        completed_stages = [
-            ConversationStage.INVOICE_ISSUED,
-            ConversationStage.CONFIRMATION,
-        ]
-        if context.current_stage in completed_stages:
-            # إذا طلب المستخدم أي شيء جديد بعد اكتمال الطلب
-            if any(w in message for w in ["تأمين", "سيارة", "عرض", "نعم"]):
-                self._reset_context(context)
-                self.logger.info("🔄 Session reset after completion")
-                return True
-        
-        # إذا في ORDER_SUMMARY والمستخدم أكد وتم إصدار الوثيقة
-        if context.current_stage == ConversationStage.ORDER_SUMMARY:
-            if data.get("confirmation"):
-                # إعادة تهيئة للطلب الجديد مع الحفاظ على البيانات الشخصية
-                self._reset_for_new_request(context)
-                return True
-        
-        # نية الإلغاء - كلمات أكثر تحديداً لتجنب التطابق الخاطئ
-        # مثال: "الغي" تتطابق خطأً مع "ضد الغير"
-        cancel_phrases = [
-            "الغي الطلب", "الغاء الطلب", "لا اريد التأمين", "ما ابي تأمين",
-            "خلاص لا اريد", "الغيها كلها", "ابي الغي", "ابغى الغي"
-        ]
-        if any(p in message for p in cancel_phrases):
-            if context.pending_action == "confirm_cancel" and data.get("confirmation"):
-                self._reset_context(context)
-                return True
-            else:
-                context.pending_action = "confirm_cancel"
-                return True
-        
         # إذا كان هناك إجراء معلق ينتظر التأكيد
         if context.pending_action == "confirm_cancel":
             if data.get("confirmation"):
                 self._reset_context(context)
                 context.pending_action = None
-                return True  # فقط عند إجراء فعلي
+                self.logger.info("🔄 Session cancelled by user confirmation")
+                return True
             context.pending_action = None
-            # لا نُرجع True هنا - ندع الانتقال الطبيعي يحدث
-        
-        # نية التعديل - كلمات أكثر تحديداً لتجنب التطابق الخاطئ
-        # مثال: "غير" تتطابق خطأً مع "ضد الغير"
-        modify_phrases = [
-            "غير الخدمة", "غير النوع", "غير التأمين", "عدل البيانات",
-            "تغيير الخدمة", "تغيير النوع", "تصحيح البيانات", "اعدل",
-            "ابي اغير", "ابغى اغير", "اريد تغيير"
-        ]
-        if any(p in message for p in modify_phrases):
-            return self._handle_modify_intent(context, message)
-        
-        # نية الاستكمال
-        resume_words = ["اكمل", "نكمل", "استمر", "كمل"]
-        if any(w in message for w in resume_words):
-            if context.current_stage == ConversationStage.GREETING:
-                return self._handle_resume_intent(context)
         
         return False
+    
+
     
     def _handle_modify_intent(self, context: ConversationContext, message: str) -> bool:
         """معالجة نية التعديل"""
@@ -483,8 +427,79 @@ class StageTransitionManager:
                 self.logger.info("🧠 AI Transition: OFFER_DETAILS -> COLLECTING_PROFILE")
                 return True
         
+        # ORDER_SUMMARY -> FINAL_CONFIRMATION (عند التأكيد)
+        elif stage == ConversationStage.ORDER_SUMMARY:
+            if intent == UserIntent.CONFIRM:
+                context.current_stage = ConversationStage.FINAL_CONFIRMATION
+                self.logger.info("🧠 AI Transition: ORDER_SUMMARY -> FINAL_CONFIRMATION")
+                return True
+            elif intent == UserIntent.REJECT:
+                context.current_stage = ConversationStage.OFFER_DETAILS
+                self.logger.info("🧠 AI Transition: ORDER_SUMMARY -> OFFER_DETAILS (rejected)")
+                return True
+        
+        # FINAL_CONFIRMATION -> INVOICE_ISSUED (عند التأكيد النهائي)
+        elif stage == ConversationStage.FINAL_CONFIRMATION:
+            if intent == UserIntent.CONFIRM:
+                # إنشاء الفاتورة ورقم السداد
+                self._create_invoice_and_payment(context)
+                context.current_stage = ConversationStage.INVOICE_ISSUED
+                self.logger.info("🧠 AI Transition: FINAL_CONFIRMATION -> INVOICE_ISSUED")
+                return True
+        
+        # INVOICE_ISSUED -> PAYMENT_DONE (عند تأكيد الدفع + تهيئة الجلسة)
+        elif stage == ConversationStage.INVOICE_ISSUED:
+            if intent == UserIntent.CONFIRM:
+                self._process_payment(context)
+                context.current_stage = ConversationStage.PAYMENT_DONE
+                self.logger.info("🧠 AI Transition: INVOICE_ISSUED -> PAYMENT_DONE")
+                # تهيئة الجلسة تلقائياً بعد الدفع
+                self._schedule_session_reset(context)
+                return True
+        
+        # PAYMENT_DONE - تم الانتهاء، أي تأكيد جديد يبدأ جلسة جديدة
+        elif stage == ConversationStage.PAYMENT_DONE:
+            # أي نية من المستخدم = بدء جلسة جديدة
+            self._reset_for_new_request(context)
+            self.logger.info("🧠 AI: New session started after payment completion")
+            return True
+        
+        # معالجة نية الإلغاء (AI-based) في أي مرحلة
+        if intent == UserIntent.CANCEL:
+            if context.pending_action == "confirm_cancel":
+                self._reset_context(context)
+                context.pending_action = None
+                self.logger.info("🧠 AI: Session cancelled")
+            else:
+                context.pending_action = "confirm_cancel"
+                self.logger.info("🧠 AI: Cancel requested, waiting for confirmation")
+            return True
+        
+        # معالجة نية الاستعلام عن السجل (AI-based)
+        if intent == UserIntent.ASK_HISTORY:
+            history_info = self._get_user_history(context)
+            context.history_response = history_info
+            self.logger.info("🧠 AI: User asking for history")
+            # لا ننتقل لمرحلة أخرى - فقط نحفظ المعلومات ليستخدمها الـ prompt
+            return False
+        
+        # معالجة نية التعديل (AI-based)
+        if intent == UserIntent.MODIFY:
+            # العودة لمرحلة سابقة بناءً على السياق
+            if context.selected_offer:
+                context.current_stage = ConversationStage.SHOWING_OFFERS
+                context.selected_offer = None
+            elif context.vehicle_data:
+                context.current_stage = ConversationStage.COLLECTING_VEHICLE
+            else:
+                context.current_stage = ConversationStage.GREETING
+            self.logger.info(f"🧠 AI: Modify requested, going back to {context.current_stage}")
+            return True
+        
         # Also check for auto-transitions
         return self._handle_auto_transition(context, message, extracted_data)
+
+
     
     def _reset_context(self, context: ConversationContext):
         """إعادة تعيين السياق (كل شيء)"""
@@ -506,6 +521,100 @@ class StageTransitionManager:
         context.pending_action = None
         self.logger.info(f"🔄 Session reset for new request, profile kept: {list(old_profile.keys())}")
     
+    def _create_invoice_and_payment(self, context: ConversationContext):
+        """إنشاء الفاتورة ورقم السداد الاحترافي"""
+        import random
+        from datetime import datetime
+        
+        # رقم الطلب
+        if not context.order_id:
+            context.order_id = f"ORD-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+        
+        # رقم الفاتورة
+        if not context.invoice_id:
+            context.invoice_id = f"INV-{random.randint(100000, 999999)}"
+        
+        # رقم السداد (SADAD)
+        context.sadad_number = f"177{random.randint(10000000000, 99999999999)}"
+        
+        # رقم المُفوتر
+        context.biller_code = "177"
+        
+        self.logger.info(f"✅ Created invoice: {context.invoice_id}, SADAD: {context.sadad_number}")
+    
+    def _process_payment(self, context: ConversationContext):
+        """معالجة الدفع وإصدار الوثيقة"""
+        import random
+        from datetime import datetime, timedelta
+        
+        # رقم الوثيقة
+        if not context.policy_id:
+            context.policy_id = f"POL-{datetime.now().strftime('%Y')}-{random.randint(100000, 999999)}"
+        
+        # تاريخ الانتهاء
+        context.policy_expiry = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
+        
+        self.logger.info(f"✅ Policy issued: {context.policy_id}, expires: {context.policy_expiry}")
+    
+    def _schedule_session_reset(self, context: ConversationContext):
+        """
+        تهيئة الجلسة للطلب الجديد بعد اكتمال الدفع
+        يحفظ البيانات الشخصية للاستخدام في الطلب التالي
+        """
+        self.logger.info("📋 Session marked for reset after payment completion")
+        # لا نهيئ فوراً - ننتظر الرسالة التالية
+        # الرسالة التالية في PAYMENT_DONE ستؤدي لتهيئة الجلسة
+    
+    def _get_user_history(self, context: ConversationContext) -> Dict[str, Any]:
+        """
+        استرجاع سجل المستخدم (الوثائق، الطلبات، الفواتير)
+        """
+        import random
+        from datetime import datetime, timedelta
+        
+        history = {
+            "has_history": False,
+            "policies": [],
+            "current_session": {}
+        }
+        
+        # 1. معلومات الجلسة الحالية
+        if context.order_id or context.invoice_id or context.policy_id:
+            history["current_session"] = {
+                "order_id": context.order_id,
+                "invoice_id": context.invoice_id,
+                "sadad_number": getattr(context, 'sadad_number', None),
+                "policy_id": context.policy_id,
+                "policy_expiry": getattr(context, 'policy_expiry', None),
+                "selected_offer": context.selected_offer,
+            }
+            history["has_history"] = True
+        
+        # 2. محاولة جلب الوثائق السابقة من DB
+        try:
+            phone = context.phone
+            national_id = context.profile_data.get("national_id")
+            
+            if phone or national_id:
+                # محاولة جلب من MongoDB (الجلسات السابقة)
+                # await self._get_previous_sessions(phone, national_id)
+                
+                # مثال على بيانات افتراضية (لو لم يجد)
+                # في الواقع سيجلب من قاعدة البيانات
+                pass
+                
+        except Exception as e:
+            self.logger.warning(f"Could not fetch user history: {e}")
+        
+        # 3. إذا لا يوجد سجل، أعط رسالة
+        if not history["has_history"]:
+            history["message"] = "لم نجد سجل سابق لك. هل تريد إصدار تأمين جديد؟"
+        else:
+            history["message"] = "تم العثور على سجلك"
+        
+        self.logger.info(f"📋 User history: has_history={history['has_history']}")
+        return history
+
     def _fetch_and_save_offers(self, context: ConversationContext):
         """
         جلب العروض من قاعدة البيانات وحفظها في السياق

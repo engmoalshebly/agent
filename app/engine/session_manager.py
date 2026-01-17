@@ -46,9 +46,14 @@ class ConversationContext:
     selected_offer: Optional[Dict] = None
     
     # Order flow
-    order_id: Optional[int] = None
-    invoice_id: Optional[int] = None
-    policy_id: Optional[int] = None
+    order_id: Optional[str] = None
+    invoice_id: Optional[str] = None
+    policy_id: Optional[str] = None
+    
+    # Payment / SADAD
+    sadad_number: Optional[str] = None
+    biller_code: Optional[str] = None
+    policy_expiry: Optional[str] = None
     
     # Tracking
     last_question: Optional[str] = None
@@ -61,6 +66,7 @@ class ConversationContext:
     updated_at: datetime = field(default_factory=datetime.now)
     last_message_at: datetime = field(default_factory=datetime.now)
 
+
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -72,9 +78,13 @@ class ConversationContext:
             "vehicle_data": self.vehicle_data,
             "offers_shown": self.offers_shown,
             "selected_offer_id": self.selected_offer_id,
+            "selected_offer": self.selected_offer,
             "order_id": self.order_id,
             "invoice_id": self.invoice_id,
             "policy_id": self.policy_id,
+            "sadad_number": self.sadad_number,
+            "biller_code": self.biller_code,
+            "policy_expiry": self.policy_expiry,
             "last_question": self.last_question,
             "awaiting_input_type": self.awaiting_input_type,
             "retry_count": self.retry_count,
@@ -82,6 +92,7 @@ class ConversationContext:
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
 
     
     @classmethod
@@ -103,7 +114,13 @@ class ConversationContext:
             retry_count=data.get("retry_count", 0),
             pending_action=data.get("pending_action"),
         )
+        # Set additional fields
+        ctx.sadad_number = data.get("sadad_number")
+        ctx.biller_code = data.get("biller_code")
+        ctx.policy_expiry = data.get("policy_expiry")
+        ctx.selected_offer = data.get("selected_offer")
         return ctx
+
 
 
 

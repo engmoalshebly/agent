@@ -241,9 +241,12 @@ class ShowingOffersStage(BaseStage):
         """معالجة النية في مرحلة عرض العروض"""
         from app.engine.ai_intent_analyzer import UserIntent
         
-        # الانتقال لمرحلة اختيار العرض
+        # اختيار عرض محدد
         if intent == UserIntent.SELECT_OFFER:
             offer_num = extracted_data.get("offer_number")
+            company_name = extracted_data.get("company_name")
+            
+            # محاولة اختيار بالرقم
             if offer_num and context.offers_shown:
                 try:
                     idx = int(offer_num) - 1
@@ -259,11 +262,22 @@ class ShowingOffersStage(BaseStage):
                         )
                 except (ValueError, IndexError):
                     pass
+            
+            # محاولة اختيار باسم الشركة
+            if company_name and context.offers_shown:
+                for i, offer in enumerate(context.offers_shown):
+                    if company_name in offer.get("company", ""):
+                        context.selected_offer = offer
+                        context.selected_offer_id = i + 1
+                        self.logger.info(f"🧠 AI Transition: SHOWING_OFFERS -> OFFER_DETAILS (company: {company_name})")
+                        return StageResponse(
+                            should_transition=True,
+                            next_stage=ConversationStage.OFFER_DETAILS
+                        )
         
-        return StageResponse(
-            should_transition=True,
-            next_stage=ConversationStage.SELECTING_OFFER
-        )
+        # البقاء في نفس المرحلة إذا لم يتم اختيار عرض
+        return StageResponse(should_transition=False)
+
 
 
 # Singleton instance

@@ -203,11 +203,32 @@ class ProfessionalInsuranceEngine:
         data_status = self._format_data_status(context)
         
         if master_prompt:
+            # إضافة معلومات السجل إذا طلبها المستخدم
+            history_section = ""
+            if hasattr(context, 'history_response') and context.history_response:
+                history_info = context.history_response
+                if history_info.get('has_history'):
+                    current = history_info.get('current_session', {})
+                    history_section = f"""
+=== 📋 سجل المستخدم (المستخدم يسأل عن سجله) ===
+{self._format_user_history(history_info)}
+
+⚠️ المستخدم يسأل عن سجله/تأميناته - أعطه المعلومات أعلاه بأسلوب احترافي!
+"""
+                else:
+                    history_section = """
+=== 📋 سجل المستخدم ===
+❌ لم نجد سجل سابق لهذا المستخدم.
+⚠️ أخبره بذلك واسأله إذا يريد إصدار تأمين جديد.
+"""
+                # مسح السجل بعد الاستخدام
+                context.history_response = None
+            
             return f"""{master_prompt}
 
 === ⚠️ البيانات المجمعة (لا تطلبها مرة أخرى!) ===
 {data_status}
-
+{history_section}
 === سجل المحادثة ===
 {history.get_history_text(8)}
 
@@ -221,6 +242,7 @@ class ProfessionalInsuranceEngine:
 
 ⛔ تذكير: لا تطلب بيانات موجودة في قسم "البيانات المجمعة"!
 ردك:"""
+
         
         # Fallback
         stage_info = get_stage_info(context)
@@ -281,6 +303,46 @@ class ProfessionalInsuranceEngine:
         
         return "\n".join(lines)
     
+    def _format_user_history(self, history_info: Dict) -> str:
+        """تنسيق سجل المستخدم بشكل احترافي"""
+        lines = []
+        
+        # معلومات الجلسة الحالية
+        current = history_info.get('current_session', {})
+        if current:
+            lines.append("🎯 **الطلب الحالي:**")
+            
+            if current.get('order_id'):
+                lines.append(f"   📋 رقم الطلب: {current['order_id']}")
+            
+            if current.get('invoice_id'):
+                lines.append(f"   🧾 رقم الفاتورة: {current['invoice_id']}")
+            
+            if current.get('sadad_number'):
+                lines.append(f"   💳 رقم السداد: {current['sadad_number']}")
+            
+            if current.get('policy_id'):
+                lines.append(f"   🛡️ رقم الوثيقة: {current['policy_id']}")
+                
+            if current.get('policy_expiry'):
+                lines.append(f"   📅 صالحة حتى: {current['policy_expiry']}")
+            
+            offer = current.get('selected_offer', {})
+            if offer:
+                lines.append(f"   🏢 الشركة: {offer.get('company', 'غير محدد')}")
+                lines.append(f"   🛡️ التغطية: {offer.get('type', 'غير محدد')}")
+                lines.append(f"   💰 السعر: {offer.get('price', 0):,.0f} ريال")
+        
+        # الوثائق السابقة
+        policies = history_info.get('policies', [])
+        if policies:
+            lines.append("\n📜 **الوثائق السابقة:**")
+            for i, policy in enumerate(policies[:5], 1):
+                lines.append(f"   {i}. {policy.get('policy_no', 'N/A')} - {policy.get('status', 'غير معروف')}")
+        
+        return "\n".join(lines) if lines else "لا توجد معلومات متاحة"
+    
+
     async def _handle_resume(
         self,
         context: ConversationContext,

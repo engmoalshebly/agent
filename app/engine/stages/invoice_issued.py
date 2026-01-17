@@ -52,32 +52,60 @@ class InvoiceIssuedStage(BaseStage):
     def get_prompt_instructions(self, context: ConversationContext) -> str:
         offer = context.selected_offer or {}
         price = offer.get("price", 0)
+        vat = price * 0.15
+        total = price + vat
+        
+        sadad_number = getattr(context, 'sadad_number', None) or self._generate_sadad()
+        biller_code = getattr(context, 'biller_code', None) or "177"
         
         return f"""⚠️ أنت في مرحلة إصدار الفاتورة.
 
-📄 تفاصيل الفاتورة:
-- رقم الفاتورة: {context.invoice_id or "جاري الإصدار..."}
-- رقم الطلب: {context.order_id or "جاري الإصدار..."}
-- المبلغ: {price:,} ريال
+📄 **بيانات الفاتورة:**
+━━━━━━━━━━━━━━━━━━━
+📋 رقم الفاتورة: {context.invoice_id}
+📋 رقم الطلب: {context.order_id}
+💰 المبلغ الإجمالي: {total:,.0f} ريال
 
-تعليمات مهمة:
-- أعط العميل رقم الفاتورة
-- اشرح له طريقة الدفع
-- اسأله تأكيد الدفع عند الانتهاء
+💳 **بيانات السداد:**
+━━━━━━━━━━━━━━━━━━━
+🏦 رقم المُفوتر: {biller_code}
+🔢 رقم السداد: {sadad_number}
+⏰ صلاحية السداد: 24 ساعة
 
-مثال:
-"تمام! 🎉 تم إصدار الفاتورة بنجاح!
+**تعليمات مهمة:**
+- ❌ لا ترسل أي روابط
+- ✅ أعط فقط رقم السداد ورقم المُفوتر
+- ✅ أخبره طرق الدفع: سداد، تطبيق البنك، الصراف
+- ✅ اسأله إذا دفع
 
-📄 رقم الفاتورة: INV-{context.invoice_id or '12345'}
-💰 المبلغ المطلوب: {price:,} ريال
+**مثال الرد:**
+"تمام! 🎉 تم إصدار فاتورتك بنجاح!
 
-يمكنك الدفع عن طريق:
+📋 **رقم الفاتورة:** {context.invoice_id}
+💰 **المبلغ:** {total:,.0f} ريال
+
+━━━━━━━━━━━━━━━━━━━
+💳 **بيانات السداد:**
+🏦 رقم المُفوتر: {biller_code}
+🔢 رقم السداد: {sadad_number}
+━━━━━━━━━━━━━━━━━━━
+
+✅ طرق الدفع:
 • سداد
-• مدى
-• فيزا/ماستركارد
+• تطبيق البنك
+• الصراف الآلي
 
-بعد ما تدفع، قولي 'تم الدفع' وأكمل لك الإجراءات! 😊"
+⏰ صلاحية الدفع: 24 ساعة
+
+بعد ما تدفع قولي 'تم الدفع' وأكمل لك! 😊"
 """
+
+    def _generate_sadad(self) -> str:
+        """توليد رقم سداد افتراضي"""
+        import random
+        return f"177{random.randint(10000000000, 99999999999)}"
+    
+
     
     def handle_intent(
         self,

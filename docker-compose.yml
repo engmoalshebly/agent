@@ -42,6 +42,22 @@ services:
       - saia-network
 
   # ================================
+  # SAIA Frontend (React)
+  # ================================
+  saia-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://concord-saia.bineyes.com/agent/api/v1
+    container_name: saia_frontend
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+    networks:
+      - saia-network
+
+  # ================================
   # PostgreSQL Database
   # ================================
   saia-postgres:
