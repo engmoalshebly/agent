@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # Observability
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
+
+    # WhatsApp Cloud API
+    WHATSAPP_VERIFY_TOKEN: Optional[str] = None
+    WHATSAPP_API_TOKEN: Optional[str] = None
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_APP_SECRET: Optional[str] = None
+    WHATSAPP_API_VERSION: str = "v21.0"
     
     # PostgreSQL Pool & Timeouts
     DB_POOL_SIZE: int = 5
