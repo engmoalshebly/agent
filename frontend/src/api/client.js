@@ -113,5 +113,24 @@ export const api = {
                 'Authorization': `Bearer ${token}`
             }
         })
+    },
+
+    // Get user conversations history
+    getConversations: async (token) => {
+        return request('/conversations', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+    },
+
+    // Get conversation messages
+    getConversationMessages: async (conversationId, token) => {
+        return request(`/conversations/${conversationId}/messages`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
     }
 }
+

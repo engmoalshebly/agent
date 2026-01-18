@@ -112,19 +112,38 @@ class OrderSummaryStage(BaseStage):
     
     def _get_offer_summary(self, context: ConversationContext) -> str:
         offer = context.selected_offer or {}
+        
+        # 🔍 Logging: تسجيل العرض المختار
+        company = offer.get('company', 'N/A')
+        offer_id = offer.get('id', 'N/A')
+        total_premium = offer.get("total_premium")
+        price = offer.get("price")
+        self.logger.info(f"📋 ORDER_SUMMARY - Selected offer: {company} (ID: {offer_id})")
+        self.logger.info(f"   total_premium: {total_premium}")
+        self.logger.info(f"   price: {price}")
+        
         lines = []
         
         if offer.get("company"):
             lines.append(f"• الشركة: {offer['company']}")
         if offer.get("type"):
             lines.append(f"• نوع التغطية: {offer['type']}")
-        if offer.get("price"):
-            price = float(offer['price'])
-            vat = price * 0.15
-            total = price + vat
-            lines.append(f"• السعر: {price:,.0f} ريال")
-            lines.append(f"• الضريبة: {vat:,.0f} ريال")
-            lines.append(f"• الإجمالي: {total:,.0f} ريال")
+        
+        # استخدام total_premium إذا كان موجوداً (من قاعدة البيانات)
+        # أو price (من العروض الافتراضية) - كلاهما يحتوي على الضريبة
+        total_price = offer.get("total_premium") or offer.get("price", 0)
+        
+        if total_price:
+            # السعر النهائي (يحتوي بالفعل على الضريبة)
+            total = float(total_price)
+            
+            # حساب السعر قبل الضريبة والضريبة للعرض فقط
+            price_before_vat = total / 1.15
+            vat = total - price_before_vat
+            
+            lines.append(f"• السعر قبل الضريبة: {price_before_vat:,.2f} ريال")
+            lines.append(f"• الضريبة (15%): {vat:,.2f} ريال")
+            lines.append(f"• الإجمالي: {total:,.2f} ريال")
         
         return "\n".join(lines) if lines else "لا توجد بيانات"
     

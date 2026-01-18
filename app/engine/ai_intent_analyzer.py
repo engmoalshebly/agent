@@ -120,99 +120,95 @@ class AIIntentAnalyzer:
         
         collected_data = json.dumps(context_data, ensure_ascii=False, default=str)
         
-        # تعليمات خاصة بكل مرحلة
-        stage_instructions = {
-            "greeting": """
-في مرحلة GREETING:
-⚠️ مهم جداً: إذا ذكر المستخدم نوع تأمين محدد (شامل، ضد الغير، VIP) = intent: "select_service" مع استخراج service_type
-- إذا قال "تأمين شامل" أو "ابي شامل" = intent: "select_service", service_type: "comprehensive"
-- إذا قال "تأمين ضد الغير" أو "طرف ثالث" = intent: "select_service", service_type: "tpl"
-- إذا طلب تأمين بدون تحديد نوع = intent: "ask_services"
-- إذا طلب تجديد = intent: "ask_services"
-- تحية فقط بدون أي طلب = intent: "greeting"
-""",
-            "selecting_service": """
-في مرحلة SELECTING_SERVICE:
-- أي ذكر لـ "شامل" أو "كامل" = intent: "select_service", service_type: "comprehensive"
-- أي ذكر لـ "ضد الغير" أو "طرف ثالث" أو "عام" = intent: "select_service", service_type: "tpl"
-- أي ذكر لـ "vip" أو "مميز" = intent: "select_service", service_type: "vip"
-- إذا أعطى بيانات سيارة = intent: "provide_vehicle_data" واستخرج البيانات
-""",
-            "collecting_vehicle": """
-في مرحلة COLLECTING_VEHICLE:
-- استخرج أي معلومات سيارة (brand, model, year, price, plate_no)
-- إذا ذكر بيانات سيارة = intent: "provide_vehicle_data"
-""",
-            "confirming_vehicle": """
-في مرحلة CONFIRMING_VEHICLE:
-- أي موافقة (نعم، صح، تمام، اوكي، اعتمد، صحيح، موافق، ماشي، زين، يلا، اعتمدها، كمل) = intent: "confirm", confirmation: true
-- أي رفض أو تعديل = intent: "modify"
-""",
-            "showing_offers": """
-في مرحلة SHOWING_OFFERS:
-- ذكر اسم شركة (ولاء، راجحي، تعاونية، سلامة، ميدغلف، أكسا، تكافل) = intent: "select_offer", company_name: "اسم الشركة"
-- ذكر رقم (1، 2، 3، العرض الأول، الثاني) = intent: "select_offer", offer_number: الرقم
-- طلب تغيير نوع التأمين = intent: "modify"
-""",
-            "offer_details": """
-في مرحلة OFFER_DETAILS:
-- أي موافقة (نعم، تمام، اكمل، موافق، يلا) = intent: "confirm", confirmation: true
-- رفض أو تغيير = intent: "modify"
-""",
-            "collecting_profile": """
-في مرحلة COLLECTING_PROFILE:
-- استخرج رقم الهوية (10 أرقام تبدأ بـ 1 أو 2) = national_id
-- استخرج تاريخ الميلاد = birth_date
-- استخرج رقم الجوال (05xxxxxxxx) = phone
-""",
-            "order_summary": """
-في مرحلة ORDER_SUMMARY:
-- أي موافقة = intent: "confirm", confirmation: true
-- طلب تعديل = intent: "modify"
-"""
+        # تعليمات ذكية بناءً على المرحلة (بدون كلمات محددة)
+        stage_context = {
+            "greeting": "المستخدم في بداية المحادثة. قد يحيي، يسأل عن الخدمات، أو يطلب تأمين مباشرة.",
+            "selecting_service": "المستخدم يختار نوع التأمين (شامل/ضد الغير/VIP).",
+            "collecting_vehicle": "جمع بيانات السيارة (النوع، الموديل، السنة، القيمة، اللوحة).",
+            "confirming_vehicle": "المستخدم يؤكد أو يعدل بيانات السيارة المعروضة.",
+            "showing_offers": "عرض العروض للمستخدم. ينتظر اختيار عرض برقم أو اسم شركة.",
+            "offer_details": "تفاصيل العرض المختار. ينتظر موافقة أو رفض.",
+            "collecting_profile": "جمع البيانات الشخصية (الهوية، تاريخ الميلاد، الجوال).",
+            "order_summary": "ملخص الطلب الكامل. ينتظر التأكيد النهائي."
         }
         
-        stage_hint = stage_instructions.get(current_stage.value, "")
+        stage_desc = stage_context.get(current_stage.value, "مرحلة غير محددة")
         
-        prompt = f"""أنت محلل نوايا ذكي لنظام تأمين سيارات سعودي. حلل رسالة المستخدم بدقة.
+        prompt = f"""أنت محلل نوايا ذكي جداً لنظام تأمين سيارات سعودي.
+مهمتك: فهم نية المستخدم الحقيقية من رسالته وتصنيفها بدقة.
 
-## المرحلة الحالية: {current_stage.value}
+═══════════════════════════════════════
+📍 السياق الحالي
+═══════════════════════════════════════
+• المرحلة: {current_stage.value}
+• الوصف: {stage_desc}
+• البيانات المجمعة: {collected_data}
 
-{stage_hint}
-
-## البيانات المجمعة:
-{collected_data}
-
-## رسالة المستخدم:
+═══════════════════════════════════════
+💬 رسالة المستخدم
+═══════════════════════════════════════
 "{message}"
 
-## المطلوب - أرجع JSON فقط:
+═══════════════════════════════════════
+🧠 تصنيفات النوايا (حلل المعنى وليس الكلمات!)
+═══════════════════════════════════════
+
+1. **greeting** - المستخدم يُلقي تحية فقط بدون طلب
+2. **ask_services** - يسأل عن الخدمات المتاحة أو أنواع التأمين
+3. **select_service** - يختار نوع تأمين (شامل/ضد الغير/VIP)
+4. **provide_vehicle_data** - يقدم معلومات عن سيارته
+5. **provide_profile_data** - يقدم بياناته الشخصية (هوية/ميلاد/جوال)
+6. **select_offer** - يختار عرضاً من العروض المعروضة
+7. **confirm** - يوافق ويريد المتابعة
+8. **reject** - يرفض العرض الحالي
+9. **cancel** - يريد إلغاء العملية أو الخروج أو عدم الاستمرار
+10. **modify** - يريد تعديل بيانات أو تغيير اختيار سابق
+11. **ask_history** - يسأل عن سجله أو وثائقه أو تأميناته السابقة
+12. **ask_question** - لديه سؤال عام أو استفسار
+13. **resume** - يريد استئناف طلب سابق
+14. **unknown** - لا يمكن تحديد النية
+
+═══════════════════════════════════════
+🎯 قواعد التحليل الذكي
+═══════════════════════════════════════
+
+✅ افهم **المعنى العام** للرسالة وليس كلمات بعينها
+✅ انتبه لـ **نبرة** الرسالة (إيجابية/سلبية/محايدة)
+✅ إذا المستخدم يُعبر عن **عدم الرغبة** أو **الرفض** = cancel
+✅ إذا المستخدم يُعبر عن **الموافقة** أو **القبول** = confirm
+✅ إذا المستخدم يسأل عن **معلومات سابقة** له = ask_history
+✅ استخرج **كل البيانات** الموجودة في الرسالة
+
+⛔ لا تعتمد على كلمات محددة - افهم السياق!
+⛔ "لا اريد" في سياق رفض = cancel (وليس confirm)
+⛔ "نعم" في سياق تأكيد = confirm
+⛔ أرقام في سياق اختيار عرض = select_offer
+
+═══════════════════════════════════════
+📤 أرجع JSON فقط:
+═══════════════════════════════════════
 {{
-    "intent": "greeting|ask_services|select_service|provide_profile_data|provide_vehicle_data|select_offer|confirm|reject|cancel|modify|ask_question|ask_history|unknown",
+    "intent": "اختر من القائمة أعلاه",
     "confidence": 0.0-1.0,
+    "reasoning": "شرح مختصر للتحليل",
     "extracted_data": {{
-        "confirmation": true/false إذا كانت موافقة,
-        "national_id": "رقم الهوية 10 أرقام",
-        "birth_date": "تاريخ الميلاد",
-        "phone": "رقم الجوال",
+        "confirmation": true/false,
+        "national_id": "رقم الهوية إن وجد",
+        "birth_date": "تاريخ الميلاد إن وجد",
+        "phone": "رقم الجوال إن وجد",
         "service_type": "comprehensive/tpl/vip",
-        "service_name": "اسم الخدمة",
         "brand": "ماركة السيارة",
         "model": "موديل السيارة",
-        "year": سنة الصنع كرقم,
-        "price": قيمة السيارة كرقم,
+        "year": سنة كرقم,
+        "price": قيمة كرقم,
         "plate_no": "رقم اللوحة",
-        "company_name": "اسم شركة التأمين",
+        "company_name": "اسم الشركة",
         "offer_number": رقم العرض
     }},
     "should_transition": true/false
 }}
 
-⚠️ مهم جداً:
-- افهم نية المستخدم من السياق حتى لو لم يستخدم كلمات محددة
-- استخرج جميع البيانات الموجودة في الرسالة
-- إذا سأل عن (تأميناتي/وثائقي/طلباتي/سجلي/بياناتي/فواتيري/حالة طلبي) = intent: "ask_history"
-- أرجع JSON فقط بدون أي نص إضافي"""
+أرجع JSON فقط بدون أي نص إضافي."""
         
         return prompt
     

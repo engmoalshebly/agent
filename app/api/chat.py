@@ -40,12 +40,13 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """Chat response model"""
+    """Chat response model with attachments support"""
     success: bool
     message: str
     conversation_id: str
     stage: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+    attachments: Optional[list] = None  # قائمة المرفقات (فاتورة، وثيقة)
     error: Optional[str] = None
     
     class Config:
@@ -54,9 +55,13 @@ class ChatResponse(BaseModel):
                 "success": True,
                 "message": "السلام عليكم! 👋\nأهلاً بك في خدمة التأمين الذكي",
                 "conversation_id": "conv_123456",
-                "stage": "greeting"
+                "stage": "greeting",
+                "attachments": [
+                    {"type": "invoice", "name": "فاتورة السداد", "url": "/api/v1/documents/invoice_123.html"}
+                ]
             }
         }
+
 
 
 # =========================================
@@ -117,14 +122,43 @@ async def chat(
             phone=request.phone
         )
         
+        # جلب المرفقات من الـ context إذا وجدت
+        attachments = []
+        from app.engine.session_manager import session_manager
+        context = await session_manager.get_context(conversation_id)
+        
+        if context:
+            invoice_path = getattr(context, 'invoice_pdf_path', None)
+            policy_path = getattr(context, 'policy_pdf_path', None)
+            
+            if invoice_path:
+                import os
+                filename = os.path.basename(invoice_path)
+                attachments.append({
+                    'type': 'invoice',
+                    'name': '🧾 فاتورة السداد',
+                    'url': f'/api/v1/documents/{filename}'
+                })
+            if policy_path:
+                import os
+                filename = os.path.basename(policy_path)
+                attachments.append({
+                    'type': 'policy',
+                    'name': '📄 وثيقة التأمين',
+                    'url': f'/api/v1/documents/{filename}'
+                })
+        
         return ChatResponse(
             success=result.success,
             message=result.response_message,
             conversation_id=conversation_id,
             stage=result.next_stage.value if result.next_stage else None,
             data=result.data_collected,
+
+            attachments=attachments if attachments else None,
             error=result.error
         )
+
         
     except Exception as e:
         logger.exception(f"Error processing chat: {e}")
@@ -191,3 +225,203 @@ async def get_stages():
     return {
         "stages": [stage.value for stage in ConversationStage]
     }
+
+
+@router.get(
+    "/documents/{filename}",
+    summary="Download document",
+    description="Download invoice or policy document"
+)
+async def get_document(filename: str):
+    """Download generated document (invoice or policy)"""
+    from fastapi.responses import HTMLResponse, FileResponse
+    from pathlib import Path
+    
+    # مسار الملفات المُولدة
+    doc_path = Path("/tmp/saia_documents") / filename
+    
+    if not doc_path.exists():
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # إرجاع الملف HTML
+    if filename.endswith('.html'):
+        content = doc_path.read_text(encoding='utf-8')
+        return HTMLResponse(content=content)
+    
+    return FileResponse(path=str(doc_path), filename=filename)
+
+
+@router.get(
+    "/conversations",
+    summary="Get user conversations",
+    description="Get list of user's previous conversations"
+)
+async def get_conversations(
+    authorization: Optional[str] = Header(None),
+    _: bool = Depends(verify_api_key)
+):
+    """Get user conversations from MongoDB"""
+    from app.db.mongodb import get_conversations_collection
+    from datetime import datetime
+    
+    try:
+        collection = await get_conversations_collection()
+        
+        # جلب آخر 30 محادثة مرتبة بالتاريخ
+        cursor = collection.find({}).sort("updated_at", -1).limit(30)
+        
+        conversations = []
+        async for conv in cursor:
+            # استخراج معلومات مفيدة من context
+            profile = conv.get("profile_data", {})
+            vehicle = conv.get("vehicle_data", {})
+            
+            # بناء وصف للمحادثة
+            preview = ""
+            if profile.get("national_id"):
+                preview = f"هوية: {profile.get('national_id', '')[:6]}..."
+            elif conv.get("last_question"):
+                preview = conv.get("last_question", "")[:40]
+            
+            conversations.append({
+                "id": conv.get("conversation_id", str(conv.get("_id"))),
+                "stage": conv.get("current_stage", "greeting"),
+                "created_at": conv.get("created_at").isoformat() if isinstance(conv.get("created_at"), datetime) else str(conv.get("created_at", "")),
+                "updated_at": conv.get("updated_at").isoformat() if isinstance(conv.get("updated_at"), datetime) else str(conv.get("updated_at", "")),
+                "has_profile": bool(profile.get("national_id")),
+                "has_vehicle": bool(vehicle),
+                "last_message": preview
+            })
+        
+        return {"success": True, "conversations": conversations}
+        
+    except Exception as e:
+        logger.error(f"Error getting conversations: {e}")
+        return {"success": True, "conversations": []}
+
+
+
+@router.get(
+    "/conversations/{conversation_id}/messages",
+    summary="Get conversation messages",
+    description="Get all messages for a specific conversation"
+)
+async def get_conversation_messages(
+    conversation_id: str,
+    _: bool = Depends(verify_api_key)
+):
+    """Get messages for a specific conversation"""
+    from app.db.mongodb import get_conversations_collection
+    
+    try:
+        collection = await get_conversations_collection()
+        
+        conv = await collection.find_one({"conversation_id": conversation_id})
+        
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        messages = []
+        for msg in conv.get("messages", []):
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", ""),
+                "timestamp": msg.get("timestamp", "")
+            })
+        
+        return {
+            "success": True,
+            "conversation_id": conversation_id,
+            "stage": conv.get("current_stage", "greeting"),
+            "messages": messages
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting messages: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving messages")
+
+
+# =========================================
+# Customer Data Management Endpoints
+# =========================================
+
+@router.get(
+    "/customer/{phone}/history",
+    summary="Get full customer history",
+    description="Get complete customer data including drafts, policies, orders, and interactions"
+)
+async def get_customer_history(
+    phone: str,
+    _: bool = Depends(verify_api_key)
+):
+    """جلب السجل الكامل للعميل"""
+    try:
+        from app.engine.customer_data_service import customer_data_service
+        
+        history = await customer_data_service.get_full_customer_history(phone=phone)
+        
+        return {
+            "success": True,
+            "phone": phone,
+            "data": history
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting customer history: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving customer history")
+
+
+@router.get(
+    "/customer/{phone}/resumable",
+    summary="Get resumable sessions",
+    description="Get sessions that can be resumed for a customer"
+)
+async def get_resumable_sessions(
+    phone: str,
+    _: bool = Depends(verify_api_key)
+):
+    """جلب الجلسات القابلة للاستئناف"""
+    try:
+        from app.engine.customer_data_service import customer_data_service
+        
+        sessions = await customer_data_service.get_resumable_sessions(phone)
+        
+        return {
+            "success": True,
+            "phone": phone,
+            "sessions": sessions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting resumable sessions: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving sessions")
+
+
+@router.get(
+    "/customer/{phone}/draft",
+    summary="Get customer draft",
+    description="Get saved draft data for a customer"
+)
+async def get_customer_draft(
+    phone: str,
+    _: bool = Depends(verify_api_key)
+):
+    """جلب مسودة بيانات العميل"""
+    try:
+        from app.engine.customer_data_service import customer_data_service
+        
+        draft = await customer_data_service.get_customer_draft(phone)
+        
+        return {
+            "success": True,
+            "phone": phone,
+            "has_draft": draft is not None,
+            "draft": draft
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting customer draft: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving draft")
+

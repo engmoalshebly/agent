@@ -50,6 +50,10 @@ function App() {
         path="/"
         element={user ? <ChatPage /> : <Navigate to="/login" replace />}
       />
+      <Route
+        path="/chat/:conversationId"
+        element={user ? <ChatPage /> : <Navigate to="/login" replace />}
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

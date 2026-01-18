@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+
+<head>
+    <meta charset="UTF-8">
+    <title>وثيقة تأمين - {{ policy_number }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            background: #fff;
+            padding: 30px;
+            color: #333;
+        }
+
+        .policy-container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 3px solid #1a5f7a;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a5f7a 0%, #0d3d4d 100%);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-logo img {
+            max-height: 50px;
+            background: white;
+            padding: 8px;
+            border-radius: 8px;
+        }
+
+        .header-center {
+            text-align: center;
+            flex: 1;
+        }
+
+        .header-center h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header-center p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .policy-banner {
+            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .policy-banner h2 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .policy-banner .policy-num {
+            font-size: 20px;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 20px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            background: #e8f4f8;
+            color: #1a5f7a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-right: 4px solid #1a5f7a;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .info-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .info-item .label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-item .value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #1a5f7a;
+        }
+
+        .validity-section {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .validity-item {
+            flex: 1;
+        }
+
+        .validity-item .label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .validity-item .date {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .validity-item .arrow {
+            font-size: 30px;
+            margin: 0 20px;
+        }
+
+        .coverage-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .coverage-box h3 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .coverage-box .type {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1a5f7a;
+        }
+
+        .terms {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.8;
+        }
+
+        .terms h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .terms ul {
+            padding-right: 20px;
+        }
+
+        .footer {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            text-align: center;
+            border-top: 1px solid #ddd;
+        }
+
+        .stamps {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 15px;
+        }
+
+        .stamp {
+            border: 3px solid #1a5f7a;
+            color: #1a5f7a;
+            padding: 15px 25px;
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .stamp.approved {
+            border-color: #28a745;
+            color: #28a745;
+        }
+
+        .footer-text {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .qr-section {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .qr-section img {
+            max-width: 80px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="policy-container">
+        <div class="header">
+            <div class="header-logo">
+                <img src="{{ saia_logo }}" alt="SAIA Logo">
+            </div>
+            <div class="header-center">
+                <h1>🛡️ وثيقة تأمين المركبات</h1>
+                <p>Motor Insurance Policy</p>
+            </div>
+            <div class="header-logo">
+                <img src="{{ bineyes_logo }}" alt="Bineyes Logo">
+            </div>
+        </div>
+
+        <div class="policy-banner">
+            <h2>✅ وثيقة صادرة ومعتمدة</h2>
+            <div class="policy-num">{{ policy_number }}</div>
+        </div>
+
+        <div class="content">
+            <div class="validity-section">
+                <div class="validity-item">
+                    <div class="label">📅 تاريخ الإصدار</div>
+                    <div class="date">{{ issue_date }}</div>
+                </div>
+                <div class="validity-item arrow">→</div>
+                <div class="validity-item">
+                    <div class="label">📅 تاريخ الانتهاء</div>
+                    <div class="date">{{ expiry_date }}</div>
+                </div>
+            </div>
+
+            <div class="coverage-box">
+                <h3>🛡️ نوع التغطية التأمينية</h3>
+                <div class="type">{{ coverage_type }}</div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">👤 بيانات المؤمن له</div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="label">رقم الهوية</div>
+                        <div class="value">{{ national_id }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">تاريخ الميلاد</div>
+                        <div class="value">{{ birth_date }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">رقم الجوال</div>
+                        <div class="value">{{ phone }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">رقم الفاتورة</div>
+                        <div class="value">{{ invoice_number }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🚗 بيانات المركبة</div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="label">نوع المركبة</div>
+                        <div class="value">{{ vehicle_brand }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">الموديل</div>
+                        <div class="value">{{ vehicle_model }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">سنة الصنع</div>
+                        <div class="value">{{ vehicle_year }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">رقم اللوحة</div>
+                        <div class="value">{{ plate_no }}</div>
+                    </div>
+                    <div class="info-item" style="grid-column: span 2;">
+                        <div class="label">القيمة التقديرية</div>
+                        <div class="value">{{ vehicle_value }} ريال</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🏢 شركة التأمين</div>
+                <div class="info-grid">
+                    <div class="info-item" style="grid-column: span 2;">
+                        <div class="label">الشركة المؤمنة</div>
+                        <div class="value">{{ company_name }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">رقم العرض</div>
+                        <div class="value">{{ offer_code }}</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="label">قسط التأمين</div>
+                        <div class="value">{{ premium }} ريال</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="terms">
+                <h4>📋 شروط وأحكام عامة:</h4>
+                <ul>
+                    <li>هذه الوثيقة صالحة لمدة سنة من تاريخ الإصدار.</li>
+                    <li>يجب الإبلاغ عن أي حادث خلال 48 ساعة من وقوعه.</li>
+                    <li>التغطية سارية داخل المملكة العربية السعودية.</li>
+                    <li>هذه الوثيقة خاضعة لأحكام نظام مراقبة شركات التأمين التعاوني.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div class="stamps">
+                <div class="stamp approved">
+                    ✓<br>معتمد
+                </div>
+                <div class="qr-section">
+                    <img src="{{ qr_code }}" alt="QR Code">
+                    <p style="font-size: 10px; color: #999;">امسح للتحقق</p>
+                </div>
+                <div class="stamp">
+                    كونكورد<br>لوساطة التأمين
+                </div>
+            </div>
+            <div class="footer-text">
+                <p>📞 للاستفسارات: support@concord.sa | 🌐 www.concord.sa</p>
+                <p>شركة كونكورد لوساطة التأمين - مرخصة من البنك المركزي السعودي</p>
+                <p style="margin-top: 5px; color: #999;">Powered by SAIA | Bineyes Technology</p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

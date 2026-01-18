@@ -55,6 +55,17 @@ class ConversationContext:
     biller_code: Optional[str] = None
     policy_expiry: Optional[str] = None
     
+    # Document paths (PDF/HTML)
+    invoice_pdf_path: Optional[str] = None
+    policy_pdf_path: Optional[str] = None
+    
+    # Multiple policies support - قائمة بوثائق التأمين للمستخدم
+    policies: list = field(default_factory=list)  # [{policy_id, vehicle, offer, created_at, status}]
+    
+    # Messages history (for retrieval)
+    messages: list = field(default_factory=list)
+
+    
     # Tracking
     last_question: Optional[str] = None
     awaiting_input_type: Optional[str] = None
@@ -85,6 +96,10 @@ class ConversationContext:
             "sadad_number": self.sadad_number,
             "biller_code": self.biller_code,
             "policy_expiry": self.policy_expiry,
+            "invoice_pdf_path": self.invoice_pdf_path,
+            "policy_pdf_path": self.policy_pdf_path,
+            "policies": self.policies,
+            "messages": self.messages,
             "last_question": self.last_question,
             "awaiting_input_type": self.awaiting_input_type,
             "retry_count": self.retry_count,
@@ -113,12 +128,16 @@ class ConversationContext:
             awaiting_input_type=data.get("awaiting_input_type"),
             retry_count=data.get("retry_count", 0),
             pending_action=data.get("pending_action"),
+            policies=data.get("policies", []),
         )
         # Set additional fields
         ctx.sadad_number = data.get("sadad_number")
         ctx.biller_code = data.get("biller_code")
         ctx.policy_expiry = data.get("policy_expiry")
         ctx.selected_offer = data.get("selected_offer")
+        ctx.invoice_pdf_path = data.get("invoice_pdf_path")
+        ctx.policy_pdf_path = data.get("policy_pdf_path")
+        ctx.messages = data.get("messages", [])
         return ctx
 
 
@@ -190,8 +209,19 @@ class SessionManager:
         return None
     
     async def create_context(self, conversation_id: str, phone: Optional[str] = None) -> ConversationContext:
-        """Create new conversation context in MongoDB"""
+        """Create new conversation context in MongoDB with auto-restore from draft"""
         context = ConversationContext(conversation_id=conversation_id, phone=phone)
+        
+        # ✅ محاولة استعادة البيانات من المسودة المحفوظة
+        if phone:
+            try:
+                from app.engine.customer_data_service import customer_data_service
+                restored = await customer_data_service.restore_context_from_draft(context, phone)
+                if restored:
+                    logger.info(f"✅ Auto-restored customer data for phone: {phone[-4:]}")
+            except Exception as e:
+                logger.warning(f"Could not restore from draft: {e}")
+        
         col = await self._get_collection()
         await col.replace_one({"conversation_id": conversation_id}, context.to_dict(), upsert=True)
         return context

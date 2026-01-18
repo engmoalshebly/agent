@@ -158,7 +158,49 @@ class CollectingVehicleStage(BaseStage):
         extracted_data: Dict[str, Any]
     ) -> StageResponse:
         """معالجة النية في مرحلة جمع بيانات السيارة"""
+        from app.engine.ai_intent_analyzer import UserIntent
         from app.engine.vehicle_manager import VehicleManager
+        
+        # ⚠️ التعامل مع الإلغاء أولاً - مع حفظ البيانات
+        if intent == UserIntent.CANCEL:
+            self.logger.info("🧠 User wants to cancel - saving draft and returning to GREETING")
+            
+            # ✅ حفظ المسودة قبل المسح (لاستخدامها لاحقاً)
+            try:
+                from app.engine.customer_data_service import customer_data_service
+                import asyncio
+                
+                # حفظ البيانات في مسودة
+                asyncio.create_task(customer_data_service.save_customer_draft(
+                    phone=context.phone or context.conversation_id,
+                    profile_data=context.profile_data.copy(),
+                    vehicle_data=context.vehicle_data.copy(),
+                    last_stage=context.current_stage.value,
+                    status="cancelled",
+                    selected_service=context.profile_data.get("service_type"),
+                    reason="user_cancelled_during_vehicle_collection"
+                ))
+                self.logger.info("✅ Draft saved for future use")
+            except Exception as e:
+                self.logger.warning(f"Could not save draft: {e}")
+            
+            # مسح السياق الحالي فقط (المسودة محفوظة)
+            context.vehicle_data = {}
+            context.profile_data.pop("service_type", None)
+            
+            return StageResponse(
+                should_transition=True,
+                next_stage=ConversationStage.GREETING,
+                prompt_addition="أفهم! 😊 لا مشكلة. حفظنا بياناتك إذا حبيت ترجع لنا. كيف أقدر أساعدك؟"
+            )
+        
+        # التعامل مع طلب التعديل
+        if intent == UserIntent.MODIFY:
+            self.logger.info("🧠 User wants to modify - going back to service selection")
+            return StageResponse(
+                should_transition=True,
+                next_stage=ConversationStage.SELECTING_SERVICE
+            )
         
         manager_data = context.vehicle_data.get("manager", {})
         if not manager_data:

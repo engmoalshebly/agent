@@ -11,6 +11,7 @@ SAIA Insurance Broker - Professional AI Conversation Engine (Simplified)
 import google.generativeai as genai
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
+from datetime import datetime
 import logging
 import json
 
@@ -161,6 +162,18 @@ class ProfessionalInsuranceEngine:
             
             history.add_message("assistant", ai_response, context.current_stage.value, extracted_data)
             
+            # حفظ الرسائل في context لاستعادتها لاحقاً
+            context.messages.append({
+                "role": "user",
+                "content": message,
+                "timestamp": datetime.now().isoformat()
+            })
+            context.messages.append({
+                "role": "assistant",
+                "content": ai_response,
+                "timestamp": datetime.now().isoformat()
+            })
+            
             await session_manager.update_context(context)
             
             return StageResult(
@@ -194,10 +207,14 @@ class ProfessionalInsuranceEngine:
             logger.warning(f"Could not build master prompt: {e}")
             master_prompt = ""
         
-        # معلومات العروض
+        # معلومات العروض - استخدام العروض الموجودة في context (لا نستدعي db_operations لتجنب الكتابة فوقها)
         offers_info = ""
         if context.current_stage in (ConversationStage.SHOWING_OFFERS, ConversationStage.AWAITING_SELECTION):
-            offers_info = db_operations.get_offers_formatted(context)
+            # استخدام العروض الموجودة في context.offers_shown مباشرة بدلاً من جلبها من db_operations
+            if context.offers_shown:
+                offers_info = self._format_offers_for_prompt(context.offers_shown)
+            else:
+                logger.warning("⚠️ No offers in context.offers_shown for SHOWING_OFFERS stage")
         
         # ⭐ قسم البيانات المجمعة والناقصة - واضح جداً للـ AI
         data_status = self._format_data_status(context)
@@ -300,6 +317,44 @@ class ProfessionalInsuranceEngine:
         # العرض المختار
         if context.selected_offer:
             lines.append(f"\n🛡️ العرض المختار: {context.selected_offer.get('company', 'غير محدد')}")
+        
+        return "\n".join(lines)
+    
+    def _format_offers_for_prompt(self, offers: list) -> str:
+        """تنسيق العروض الموجودة في context للـ AI - بدون تغيير الأسعار"""
+        if not offers:
+            return ""
+        
+        lines = ["=== العروض المتوفرة ==="]
+        
+        for i, offer in enumerate(offers, 1):
+            company = offer.get('company', 'شركة')
+            # استخدام total_premium أولاً، ثم price كـ fallback
+            price = offer.get('total_premium') or offer.get('price', 0)
+            offer_type = offer.get('type', offer.get('coverage_type', 'تأمين'))
+            
+            # Badge
+            badge = ""
+            if offer.get("is_cheapest"):
+                badge = " 💰 الأرخص"
+            elif offer.get("is_recommended"):
+                badge = " ⭐ موصى به"
+            
+            lines.append(f"\n🏢 **العرض {i}: {company}**{badge}")
+            lines.append(f"📋 النوع: {offer_type}")
+            lines.append(f"💵 السعر الإجمالي: {price:,.2f} ريال")
+            
+            # المميزات
+            features = offer.get('features', []) or offer.get('included_features', [])
+            if features:
+                lines.append("✅ المميزات:")
+                for f in features[:3]:  # أول 3 فقط
+                    if isinstance(f, dict):
+                        lines.append(f"   {f.get('icon', '•')} {f.get('name', '')}")
+                    else:
+                        lines.append(f"   • {f}")
+        
+        lines.append("\n💬 أي عرض يناسبك؟ اختر رقم العرض أو اسم الشركة")
         
         return "\n".join(lines)
     

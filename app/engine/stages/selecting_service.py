@@ -65,13 +65,19 @@ class SelectingServiceStage(BaseStage):
     
     def _get_services_from_db(self) -> str:
         """جلب الخدمات من قاعدة البيانات"""
+        default_services = """1. **التأمين الشامل** 🛡️
+   يغطي أضرار سيارتك وأضرار الطرف الآخر + السرقة والحريق
+
+2. **تأمين ضد الغير** 🚗
+   يغطي الأضرار التي تسببها للطرف الآخر فقط"""
+        
         if not self.service_repo:
-            return "لا توجد خدمات متوفرة"
+            return default_services
         
         try:
             services = self.service_repo.get_active_services()
             if not services:
-                return "لا توجد خدمات متوفرة"
+                return default_services
             
             lines = []
             for i, svc in enumerate(services, 1):
@@ -84,7 +90,7 @@ class SelectingServiceStage(BaseStage):
             return "\n".join(lines)
         except Exception as e:
             self.logger.error(f"Error fetching services: {e}")
-            return "لا توجد خدمات متوفرة"
+            return default_services
     
     def get_available_services(self) -> list:
         """الحصول على قائمة الخدمات المتوفرة"""

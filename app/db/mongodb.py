@@ -581,3 +581,137 @@ mongodb_manager = MongoDBManager(
     connection_string=settings.MONGO_URI,
     database_name=settings.MONGO_DB_NAME
 )
+
+
+async def get_conversations_collection():
+    """Helper function to get conversations collection"""
+    if not mongodb_manager.is_connected():
+        await mongodb_manager.connect()
+    return mongodb_manager.db.conversation_contexts
+
+
+async def get_users_collection():
+    """Helper function to get users collection"""
+    if not mongodb_manager.is_connected():
+        await mongodb_manager.connect()
+    return mongodb_manager.db.users
+
+
+async def find_user_by_national_id(national_id: str) -> Optional[Dict[str, Any]]:
+    """البحث عن مستخدم برقم الهوية"""
+    try:
+        collection = await get_users_collection()
+        user = await collection.find_one({"national_id": national_id})
+        if user:
+            user["_id"] = str(user["_id"])
+        return user
+    except Exception as e:
+        logger.error(f"Error finding user by national_id: {e}")
+        return None
+
+
+async def find_user_by_phone(phone: str) -> Optional[Dict[str, Any]]:
+    """البحث عن مستخدم برقم الجوال"""
+    try:
+        collection = await get_users_collection()
+        user = await collection.find_one({"phone": phone})
+        if user:
+            user["_id"] = str(user["_id"])
+        return user
+    except Exception as e:
+        logger.error(f"Error finding user by phone: {e}")
+        return None
+
+
+async def create_or_update_user(user_data: Dict[str, Any]) -> str:
+    """إنشاء أو تحديث مستخدم"""
+    try:
+        collection = await get_users_collection()
+        
+        # البحث بالهوية أو الجوال
+        national_id = user_data.get("national_id")
+        phone = user_data.get("phone")
+        
+        existing_user = None
+        if national_id:
+            existing_user = await collection.find_one({"national_id": national_id})
+        if not existing_user and phone:
+            existing_user = await collection.find_one({"phone": phone})
+        
+        if existing_user:
+            # تحديث المستخدم الموجود
+            user_data["updated_at"] = datetime.now()
+            await collection.update_one(
+                {"_id": existing_user["_id"]},
+                {"$set": user_data}
+            )
+            logger.info(f"✅ Updated user: {existing_user.get('user_id')}")
+            return str(existing_user["_id"])
+        else:
+            # إنشاء مستخدم جديد
+            user_id = f"user_{national_id or phone or datetime.now().strftime('%Y%m%d%H%M%S')}"
+            user_data["user_id"] = user_id
+            user_data["created_at"] = datetime.now()
+            user_data["updated_at"] = datetime.now()
+            user_data["policies"] = user_data.get("policies", [])
+            user_data["conversation_ids"] = user_data.get("conversation_ids", [])
+            
+            result = await collection.insert_one(user_data)
+            logger.info(f"✅ Created new user: {user_id}")
+            return str(result.inserted_id)
+    except Exception as e:
+        logger.error(f"Error creating/updating user: {e}")
+        return ""
+
+
+async def add_policy_to_user(national_id: str, policy: Dict[str, Any]) -> bool:
+    """إضافة وثيقة تأمين للمستخدم"""
+    try:
+        collection = await get_users_collection()
+        result = await collection.update_one(
+            {"national_id": national_id},
+            {
+                "$push": {"policies": policy},
+                "$set": {"updated_at": datetime.now()}
+            }
+        )
+        if result.modified_count > 0:
+            logger.info(f"✅ Added policy {policy.get('policy_id')} to user {national_id}")
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error adding policy to user: {e}")
+        return False
+
+
+async def link_conversation_to_user(national_id: str, conversation_id: str) -> bool:
+    """ربط محادثة بالمستخدم"""
+    try:
+        collection = await get_users_collection()
+        result = await collection.update_one(
+            {"national_id": national_id},
+            {
+                "$addToSet": {"conversation_ids": conversation_id},
+                "$set": {"updated_at": datetime.now()}
+            }
+        )
+        if result.modified_count > 0:
+            logger.info(f"✅ Linked conversation {conversation_id} to user {national_id}")
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error linking conversation to user: {e}")
+        return False
+
+
+async def get_user_policies(national_id: str) -> List[Dict[str, Any]]:
+    """جلب وثائق التأمين للمستخدم"""
+    try:
+        user = await find_user_by_national_id(national_id)
+        if user:
+            return user.get("policies", [])
+        return []
+    except Exception as e:
+        logger.error(f"Error getting user policies: {e}")
+        return []
+

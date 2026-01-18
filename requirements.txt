@@ -12,12 +12,16 @@ email-validator>=2.0.0
 asyncpg>=0.29.0
 motor>=3.3.0
 pymongo>=4.6.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
 
 # LLM Integration
 google-generativeai>=0.3.0
 openai>=1.10.0
 langchain>=0.1.0
 langchain-google-genai>=0.0.6
+langchain-community>=0.0.10
+langchain-core>=0.1.0
 
 # Security
 python-jose[cryptography]>=3.3.0
