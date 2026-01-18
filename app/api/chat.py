@@ -46,6 +46,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     stage: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+    has_attachments: bool = False  # هل الرسالة تحتوي على مرفقات؟
     attachments: Optional[list] = None  # قائمة المرفقات (فاتورة، وثيقة)
     error: Optional[str] = None
     
@@ -56,8 +57,9 @@ class ChatResponse(BaseModel):
                 "message": "السلام عليكم! 👋\nأهلاً بك في خدمة التأمين الذكي",
                 "conversation_id": "conv_123456",
                 "stage": "greeting",
+                "has_attachments": True,
                 "attachments": [
-                    {"type": "invoice", "name": "فاتورة السداد", "url": "/api/v1/documents/invoice_123.html"}
+                    {"type": "invoice", "name": "فاتورة السداد", "url": "https://concord-saia.bineyes.com/agent/api/v1/documents/invoice_123.pdf"}
                 ]
             }
         }
@@ -127,6 +129,9 @@ async def chat(
         from app.engine.session_manager import session_manager
         context = await session_manager.get_context(conversation_id)
         
+        # Base URL للروابط الكاملة
+        base_url = "https://concord-saia.bineyes.com/agent"
+        
         if context:
             invoice_path = getattr(context, 'invoice_pdf_path', None)
             policy_path = getattr(context, 'policy_pdf_path', None)
@@ -137,7 +142,7 @@ async def chat(
                 attachments.append({
                     'type': 'invoice',
                     'name': '🧾 فاتورة السداد',
-                    'url': f'/api/v1/documents/{filename}'
+                    'url': f'{base_url}/api/v1/documents/{filename}'
                 })
             if policy_path:
                 import os
@@ -145,7 +150,7 @@ async def chat(
                 attachments.append({
                     'type': 'policy',
                     'name': '📄 وثيقة التأمين',
-                    'url': f'/api/v1/documents/{filename}'
+                    'url': f'{base_url}/api/v1/documents/{filename}'
                 })
         
         return ChatResponse(
@@ -154,7 +159,7 @@ async def chat(
             conversation_id=conversation_id,
             stage=result.next_stage.value if result.next_stage else None,
             data=result.data_collected,
-
+            has_attachments=len(attachments) > 0,
             attachments=attachments if attachments else None,
             error=result.error
         )
@@ -243,7 +248,15 @@ async def get_document(filename: str):
     if not doc_path.exists():
         raise HTTPException(status_code=404, detail="Document not found")
     
-    # إرجاع الملف HTML
+    # إرجاع PDF
+    if filename.endswith('.pdf'):
+        return FileResponse(
+            path=str(doc_path), 
+            filename=filename,
+            media_type='application/pdf'
+        )
+    
+    # إرجاع HTML (للتوافق مع الملفات القديمة)
     if filename.endswith('.html'):
         content = doc_path.read_text(encoding='utf-8')
         return HTMLResponse(content=content)

@@ -47,10 +47,15 @@ class PDFGenerator:
             raise FileNotFoundError(f"Template not found: {template_path}")
         return template_path.read_text(encoding='utf-8')
     
-    def _get_logo_base64(self, logo_name: str) -> str:
-        """تحويل الشعار لـ Base64 للتضمين في HTML"""
+    def _get_logo_base64(self, logo_name: str, max_size_kb: int = 150) -> str:
+        """تحويل الشعار لـ Base64 للتضمين في HTML - تجاهل الصور الكبيرة"""
         logo_path = LOGOS_DIR / logo_name
         if logo_path.exists():
+            # تجاهل الصور الكبيرة لمنع مشاكل الذاكرة
+            file_size_kb = logo_path.stat().st_size / 1024
+            if file_size_kb > max_size_kb:
+                self.logger.warning(f"Logo {logo_name} too large ({file_size_kb:.0f}KB > {max_size_kb}KB), skipping")
+                return ""
             with open(logo_path, 'rb') as f:
                 return f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
         return ""
@@ -126,35 +131,55 @@ class PDFGenerator:
     
     def save_invoice_html(self, context_data: Dict[str, Any]) -> str:
         """
-        حفظ الفاتورة كملف HTML
+        حفظ الفاتورة كملف PDF
         Returns: مسار الملف
         """
         html = self.generate_invoice_html(context_data)
         
         # إنشاء اسم ملف فريد
         invoice_id = context_data.get('invoice_id', datetime.now().strftime('%Y%m%d%H%M%S'))
-        filename = f"invoice_{invoice_id}.html"
+        filename = f"invoice_{invoice_id}.pdf"
         filepath = OUTPUT_DIR / filename
         
-        filepath.write_text(html, encoding='utf-8')
-        self.logger.info(f"✅ Invoice HTML saved: {filepath}")
+        # تحويل HTML إلى PDF باستخدام weasyprint
+        try:
+            from weasyprint import HTML
+            HTML(string=html, base_url=str(TEMPLATES_DIR)).write_pdf(str(filepath))
+            self.logger.info(f"✅ Invoice PDF saved: {filepath}")
+        except Exception as e:
+            self.logger.error(f"PDF generation failed, falling back to HTML: {e}")
+            # Fallback to HTML if PDF fails
+            filename = f"invoice_{invoice_id}.html"
+            filepath = OUTPUT_DIR / filename
+            filepath.write_text(html, encoding='utf-8')
+            self.logger.info(f"⚠️ Invoice HTML saved (fallback): {filepath}")
         
         return str(filepath)
     
     def save_policy_html(self, context_data: Dict[str, Any]) -> str:
         """
-        حفظ الوثيقة كملف HTML
+        حفظ الوثيقة كملف PDF
         Returns: مسار الملف
         """
         html = self.generate_policy_html(context_data)
         
         # إنشاء اسم ملف فريد
         policy_id = context_data.get('policy_id', datetime.now().strftime('%Y%m%d%H%M%S'))
-        filename = f"policy_{policy_id}.html"
+        filename = f"policy_{policy_id}.pdf"
         filepath = OUTPUT_DIR / filename
         
-        filepath.write_text(html, encoding='utf-8')
-        self.logger.info(f"✅ Policy HTML saved: {filepath}")
+        # تحويل HTML إلى PDF باستخدام weasyprint
+        try:
+            from weasyprint import HTML
+            HTML(string=html, base_url=str(TEMPLATES_DIR)).write_pdf(str(filepath))
+            self.logger.info(f"✅ Policy PDF saved: {filepath}")
+        except Exception as e:
+            self.logger.error(f"PDF generation failed, falling back to HTML: {e}")
+            # Fallback to HTML if PDF fails
+            filename = f"policy_{policy_id}.html"
+            filepath = OUTPUT_DIR / filename
+            filepath.write_text(html, encoding='utf-8')
+            self.logger.info(f"⚠️ Policy HTML saved (fallback): {filepath}")
         
         return str(filepath)
     

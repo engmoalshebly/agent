@@ -54,19 +54,24 @@ class PaymentDoneStage(BaseStage):
         offer = context.selected_offer or {}
         policy_expiry = getattr(context, 'policy_expiry', None) or self._get_expiry_date()
         
-        # روابط المستندات
-        invoice_link = getattr(context, 'invoice_pdf_path', None)
-        policy_link = getattr(context, 'policy_pdf_path', None)
+        # ✅ توليد ملف وثيقة التأمين
+        policy_url = self._generate_policy_file(context)
         
-        docs_section = ""
-        if invoice_link or policy_link:
-            docs_section = f"""
-📎 **المستندات المرفقة:**
-"""
-            if invoice_link:
-                docs_section += f"• 🧾 الفاتورة: تم إرسالها\n"
-            if policy_link:
-                docs_section += f"• 📄 وثيقة التأمين: تم إرسالها\n"
+        # روابط المستندات
+        invoice_path = getattr(context, 'invoice_pdf_path', None)
+        invoice_url = ""
+        if invoice_path:
+            import os
+            invoice_url = f"/api/v1/documents/{os.path.basename(invoice_path)}"
+        
+        # بناء قسم المرفقات مع الروابط
+        docs_section = "\n📎 **المستندات المرفقة:**\n"
+        if invoice_url:
+            docs_section += f"🧾 الفاتورة: {invoice_url}\n"
+        if policy_url:
+            docs_section += f"📄 وثيقة التأمين: {policy_url}\n"
+        
+        self.logger.info(f"📄 PAYMENT_DONE - policy_url: {policy_url}, invoice_url: {invoice_url}")
         
         return f"""⚠️ أنت في مرحلة إصدار الوثيقة النهائية!
 
@@ -80,7 +85,7 @@ class PaymentDoneStage(BaseStage):
 📅 صالحة حتى: {policy_expiry}
 {docs_section}
 **تعليمات مهمة:**
-- ✅ أخبره أن الفاتورة ووثيقة التأمين مرفقة
+- ✅ أخبره أن الفاتورة ووثيقة التأمين مرفقة مع الروابط
 - ✅ أعط رقم الوثيقة
 - ✅ هنئه واسأله إذا يحتاج شيء آخر
 
@@ -97,12 +102,71 @@ class PaymentDoneStage(BaseStage):
 ━━━━━━━━━━━━━━━━━━━
 
 📎 **المرفقات:**
-🧾 فاتورة السداد - مرفقة
-📄 وثيقة التأمين - مرفقة
+🧾 فاتورة السداد: {invoice_url if invoice_url else 'مرفقة'}
+📄 وثيقة التأمين: {policy_url if policy_url else 'مرفقة'}
 
 شكراً لثقتك فينا! 🙏
 تحتاج أي شي ثاني?"
 """
+    
+    def _generate_policy_file(self, context: ConversationContext) -> str:
+        """توليد ملف وثيقة التأمين"""
+        try:
+            from app.services.pdf_generator import PDFGenerator
+            from app.engine.vehicle_manager import VehicleManager
+            
+            self.logger.info("📄 Generating policy document...")
+            
+            # تحضير بيانات السيارة
+            vehicle_brand, vehicle_model, vehicle_year, plate_no, vehicle_value = "", "", "", "", 0
+            
+            manager_data = context.vehicle_data.get("manager", {})
+            if manager_data:
+                vm = VehicleManager.from_dict(manager_data)
+                if vm.current_vehicle:
+                    v = vm.current_vehicle
+                    vehicle_brand = v.brand or ""
+                    vehicle_model = v.model or ""
+                    vehicle_year = v.year or ""
+                    plate_no = v.plate_no or ""
+                    vehicle_value = v.value or 0
+            
+            offer = context.selected_offer or {}
+            
+            # تحضير البيانات
+            doc_data = {
+                'policy_id': context.policy_id,
+                'invoice_id': context.invoice_id,
+                'national_id': context.profile_data.get('national_id', ''),
+                'birth_date': context.profile_data.get('birth_date', ''),
+                'phone': context.profile_data.get('phone', ''),
+                'vehicle_brand': vehicle_brand,
+                'vehicle_model': vehicle_model,
+                'vehicle_year': vehicle_year,
+                'plate_no': plate_no,
+                'vehicle_value': vehicle_value,
+                'company_name': offer.get('company', 'شركة التأمين'),
+                'coverage_type': offer.get('type', 'تأمين شامل'),
+                'offer_code': offer.get('code', 'N/A'),
+                'total_amount': offer.get('total_premium', offer.get('price', 0)),
+            }
+            
+            # توليد الوثيقة
+            generator = PDFGenerator()
+            policy_path = generator.save_policy_html(doc_data)
+            
+            if policy_path:
+                import os
+                filename = os.path.basename(policy_path)
+                context.policy_pdf_path = policy_path
+                url = f"/api/v1/documents/{filename}"
+                self.logger.info(f"✅ Policy generated: {policy_path}")
+                return url
+                
+        except Exception as e:
+            self.logger.error(f"Error generating policy: {e}")
+        
+        return ""
 
     
     def _get_expiry_date(self) -> str:

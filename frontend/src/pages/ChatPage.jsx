@@ -144,7 +144,8 @@ function ChatPage() {
                 const assistantMessage = {
                     role: 'assistant',
                     content: result.message || 'لا يوجد رد',
-                    attachments: result.attachments || []
+                    has_attachments: result.has_attachments || false,
+                    attachments: result.has_attachments ? result.attachments : []
                 }
                 setMessages(prev => [...prev, assistantMessage])
 
@@ -260,7 +261,7 @@ function ChatPage() {
                         ☰
                     </button>
                     <div className="header-title">
-                        <img src="./logo.png" alt="SAIA" className="header-logo" />
+                        <img src="/logo.png" alt="SAIA" className="header-logo" />
                         {currentStage && (
                             <span className="stage-indicator">
                                 {STAGE_NAMES[currentStage] || currentStage}
@@ -273,7 +274,7 @@ function ChatPage() {
                 <div className="messages-area">
                     {messages.length === 0 ? (
                         <div className="welcome-screen">
-                            <img src="./logo.png" alt="SAIA" className="welcome-logo-img" />
+                            <img src="/logo.png" alt="SAIA" className="welcome-logo-img" />
                             <h1>SAIA Insurance</h1>
                             <p>المساعد الذكي لكونكورد للتأمين</p>
                             <div className="quick-actions">
@@ -298,12 +299,12 @@ function ChatPage() {
                                                 <p key={i}>{line || '\u00A0'}</p>
                                             ))}
                                         </div>
-                                        {msg.attachments && msg.attachments.length > 0 && (
+                                        {msg.has_attachments === true && msg.attachments && msg.attachments.length > 0 && (
                                             <div className="attachments">
                                                 {msg.attachments.map((attach, i) => (
                                                     <a
                                                         key={i}
-                                                        href={`${import.meta.env.VITE_API_URL || '/agent'}${attach.url}`}
+                                                        href={attach.url}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className={`attachment-link ${attach.type}`}

@@ -196,9 +196,29 @@ class StageTransitionManager:
     
     def _handle_cancel_intent(self, context: ConversationContext) -> bool:
         """
-        معالجة نية الإلغاء - حفظ المسودة والعودة للترحيب
+        معالجة نية الإلغاء - طلب التأكيد أولاً ثم حفظ المسودة والعودة للترحيب
         """
-        self.logger.info("🧠 Handling CANCEL intent - saving draft and returning to GREETING")
+        # ✅ إذا كان هناك تأكيد معلق وجاء التأكيد مرة أخرى = إلغاء فعلي
+        if context.pending_action == "confirm_cancel":
+            self.logger.info("🔄 User confirmed cancellation - proceeding with cancel")
+            context.pending_action = None
+            self._execute_cancellation(context)
+            return True
+        
+        # 🔄 أول مرة يطلب الإلغاء = نطلب التأكيد
+        self.logger.info("🧠 Cancel requested - asking for confirmation")
+        context.pending_action = "confirm_cancel"
+        
+        # إضافة رسالة تأكيد للبرومبت
+        context.cancel_confirmation_pending = True
+        
+        return False  # لا ننتقل - ندع الـ AI يعرض رسالة التأكيد
+    
+    def _execute_cancellation(self, context: ConversationContext):
+        """
+        تنفيذ الإلغاء الفعلي بعد التأكيد
+        """
+        self.logger.info("🧠 Executing cancellation - saving draft and returning to GREETING")
         
         # حفظ المسودة قبل الإلغاء
         try:
@@ -222,8 +242,7 @@ class StageTransitionManager:
         context.vehicle_data = {}
         context.profile_data.pop("service_type", None)
         context.current_stage = ConversationStage.GREETING
-        
-        return True
+        context.cancel_confirmation_pending = False
     
     def _handle_history_request(self, context: ConversationContext) -> bool:
         """
