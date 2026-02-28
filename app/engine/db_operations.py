@@ -205,6 +205,7 @@ class DatabaseOperations:
                 "price_before_vat": round(base_price * 0.85 * 0.80),  # بعد الخصومات
                 "vat_amount": round(base_price * 0.85 * 0.80 * 0.15),
                 "price": round(base_price * 0.85 * 0.80 * 1.15),  # السعر النهائي
+                "total_premium": round(base_price * 0.85 * 0.80 * 1.15),  # نفس price للتوافق
                 
                 # === مبلغ التحمل ===
                 "deductible_options": [
@@ -248,6 +249,7 @@ class DatabaseOperations:
                 "price_before_vat": round(base_price * 0.90 * 0.77),
                 "vat_amount": round(base_price * 0.90 * 0.77 * 0.15),
                 "price": round(base_price * 0.90 * 0.77 * 1.15),
+                "total_premium": round(base_price * 0.90 * 0.77 * 1.15),  # نفس price للتوافق
                 
                 # === مبلغ التحمل ===
                 "deductible_options": [
@@ -290,6 +292,7 @@ class DatabaseOperations:
                 "price_before_vat": round(base_price * 0.95 * 0.75),
                 "vat_amount": round(base_price * 0.95 * 0.75 * 0.15),
                 "price": round(base_price * 0.95 * 0.75 * 1.15),
+                "total_premium": round(base_price * 0.95 * 0.75 * 1.15),  # نفس price للتوافق
                 
                 # === مبلغ التحمل ===
                 "deductible_options": [
@@ -334,6 +337,7 @@ class DatabaseOperations:
                 "price_before_vat": round(base_price * 1.0 * 0.70),
                 "vat_amount": round(base_price * 1.0 * 0.70 * 0.15),
                 "price": round(base_price * 1.0 * 0.70 * 1.15),
+                "total_premium": round(base_price * 1.0 * 0.70 * 1.15),  # نفس price للتوافق
                 
                 # === مبلغ التحمل ===
                 "deductible_options": [
@@ -467,9 +471,8 @@ class DatabaseOperations:
             return None
         
         try:
-            price = float(offer.get("price", 0))
-            vat = price * 0.15
-            total = price + vat
+            # استخدام total_premium مباشرة (يتضمن الضريبة)
+            total = float(offer.get("total_premium", 0)) or float(offer.get("price", 0))
             
             order = self.order_repo.create_order(
                 user_id=int(context.user_id) if context.user_id else 1,

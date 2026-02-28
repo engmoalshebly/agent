@@ -76,22 +76,42 @@ class CollectingVehicleStage(BaseStage):
         missing = self.get_missing_data(context)
         return f"""⚠️ أنت في مرحلة جمع بيانات السيارة.
 
-تعليمات مهمة:
-- اطلب البيانات بالترتيب: نوع السيارة، موديلها، سنتها، قيمتها، رقم اللوحة
-- لا تطلب "نوع التسجيل" أبداً
-- أكد استلام أي بيانات صحيحة
-- لا تنتقل للمرحلة التالية إلا بعد اكتمال الـ 5 حقول
+⛔ **ممنوع منعاً باتاً:**
+- لا تطلب الرقم التسلسلي (VIN) أبداً
+- لا تطلب رقم الهيكل أبداً
+- لا تطلب نوع السيارة (سيدان/دفع رباعي) أبداً
+- لا تطلب أي بيانات غير موجودة في القائمة أدناه
 
-البيانات:
+✅ **البيانات المطلوبة فقط (5 حقول):**
+1. نوع/ماركة السيارة (مثل: تويوتا، هيونداي)
+2. موديل السيارة (مثل: كامري، سوناتا)
+3. سنة الصنع (مثل: 2022)
+4. القيمة التقديرية بالريال (مثل: 80000)
+5. رقم اللوحة (مثل: أ ب ج 1234)
+
+📋 **حالة البيانات الحالية:**
 {missing}
 
-مثال على الطلب:
-"ممتاز! عشان أجيب لك أفضل العروض، محتاج بيانات سيارتك 🚗
-وش نوع السيارة؟"
+⚠️ **تعليمات إلزامية:**
+1. اعرض القائمة أعلاه للمستخدم في كل رد
+2. ضع ✅ أمام البيانات المكتملة
+3. ضع ❌ أمام البيانات الناقصة
+4. اسأل عن الحقل الناقص التالي فقط
 
-بعد كل معلومة جديدة:
-"تمام! (البيانات). وش (الحقل التالي)؟"
+📝 **مثال على الرد الصحيح:**
+"تمام! 😊 هذي بيانات السيارة:
+
+📋 **بيانات السيارة:**
+✅ النوع: هيونداي
+✅ الموديل: سوناتا
+✅ السنة: 2021
+❌ القيمة: مطلوب
+❌ اللوحة: مطلوب
+
+كم القيمة التقديرية للسيارة؟ 💰"
 """
+
+
     
     def get_missing_data(self, context: ConversationContext) -> str:
         """الحصول على البيانات الناقصة للسيارة"""
@@ -138,7 +158,49 @@ class CollectingVehicleStage(BaseStage):
         extracted_data: Dict[str, Any]
     ) -> StageResponse:
         """معالجة النية في مرحلة جمع بيانات السيارة"""
+        from app.engine.ai_intent_analyzer import UserIntent
         from app.engine.vehicle_manager import VehicleManager
+        
+        # ⚠️ التعامل مع الإلغاء أولاً - مع حفظ البيانات
+        if intent == UserIntent.CANCEL:
+            self.logger.info("🧠 User wants to cancel - saving draft and returning to GREETING")
+            
+            # ✅ حفظ المسودة قبل المسح (لاستخدامها لاحقاً)
+            try:
+                from app.engine.customer_data_service import customer_data_service
+                import asyncio
+                
+                # حفظ البيانات في مسودة
+                asyncio.create_task(customer_data_service.save_customer_draft(
+                    phone=context.phone or context.conversation_id,
+                    profile_data=context.profile_data.copy(),
+                    vehicle_data=context.vehicle_data.copy(),
+                    last_stage=context.current_stage.value,
+                    status="cancelled",
+                    selected_service=context.profile_data.get("service_type"),
+                    reason="user_cancelled_during_vehicle_collection"
+                ))
+                self.logger.info("✅ Draft saved for future use")
+            except Exception as e:
+                self.logger.warning(f"Could not save draft: {e}")
+            
+            # مسح السياق الحالي فقط (المسودة محفوظة)
+            context.vehicle_data = {}
+            context.profile_data.pop("service_type", None)
+            
+            return StageResponse(
+                should_transition=True,
+                next_stage=ConversationStage.GREETING,
+                prompt_addition="أفهم! 😊 لا مشكلة. حفظنا بياناتك إذا حبيت ترجع لنا. كيف أقدر أساعدك؟"
+            )
+        
+        # التعامل مع طلب التعديل
+        if intent == UserIntent.MODIFY:
+            self.logger.info("🧠 User wants to modify - going back to service selection")
+            return StageResponse(
+                should_transition=True,
+                next_stage=ConversationStage.SELECTING_SERVICE
+            )
         
         manager_data = context.vehicle_data.get("manager", {})
         if not manager_data:

@@ -57,7 +57,7 @@ function LoginPage() {
                 {/* Logo Section */}
                 <div className="login-header">
                     <div className="logo">
-                        <img src="/logo.png" alt="SAIA Insurance" className="logo-image" />
+                        <img src="./logo-dark.png" alt="SAIA Insurance" className="logo-image" />
                     </div>
                     <p className="tagline">منصة وسيط التأمين الذكي</p>
                 </div>

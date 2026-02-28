@@ -11,6 +11,8 @@ services:
     container_name: saia_insurance_api
     ports:
       - "3300:3300"
+    env_file:
+      - .env
     environment:
       - API_TITLE=SAIA Insurance Broker API
       - API_VERSION=2.0.0
@@ -37,6 +39,22 @@ services:
       - saia-mongo
     volumes:
       - ./app:/app/app:ro
+    restart: unless-stopped
+    networks:
+      - saia-network
+
+  # ================================
+  # SAIA Frontend (React)
+  # ================================
+  saia-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://concord-saia.bineyes.com/agent/api/v1
+    container_name: saia_frontend
+    ports:
+      - "5173:80"
     restart: unless-stopped
     networks:
       - saia-network

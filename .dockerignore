@@ -56,5 +56,5 @@ start.ps1
 start_service.bat
 start_service.ps1
 
-# Old requirements (replaced by requirements/ folder)
-requirements.txt
+# Old requirements folder comment only
+# requirements.txt is needed by Dockerfile

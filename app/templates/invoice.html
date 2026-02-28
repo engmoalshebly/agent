@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <title>فاتورة - {{ invoice_number }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif; 
+            background: #fff; 
+            padding: 40px;
+            color: #333;
+        }
+        .invoice-container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 2px solid #1a5f7a;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a5f7a 0%, #0d3d4d 100%);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-logo img {
+            max-height: 60px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .header-title {
+            text-align: center;
+        }
+        .header-title h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        .header-title p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .invoice-info {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            border-bottom: 1px solid #ddd;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #1a5f7a;
+        }
+        .content {
+            padding: 30px;
+        }
+        .receipt-text {
+            background: #e8f4f8;
+            padding: 25px;
+            border-radius: 10px;
+            border-right: 5px solid #1a5f7a;
+            margin-bottom: 25px;
+            font-size: 16px;
+            line-height: 1.8;
+        }
+        .receipt-text strong {
+            color: #1a5f7a;
+        }
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+        }
+        .details-table th {
+            background: #1a5f7a;
+            color: white;
+            padding: 12px;
+            text-align: right;
+        }
+        .details-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        .details-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .total-section {
+            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .total-amount {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        .qr-section {
+            text-align: center;
+            padding: 20px;
+            border-top: 1px dashed #ddd;
+        }
+        .qr-section img {
+            max-width: 120px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+        }
+        .qr-section p {
+            margin-top: 10px;
+            color: #666;
+            font-size: 12px;
+        }
+        .footer {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #666;
+        }
+        .stamp {
+            display: inline-block;
+            border: 3px solid #28a745;
+            color: #28a745;
+            padding: 10px 20px;
+            border-radius: 5px;
+            transform: rotate(-5deg);
+            font-weight: bold;
+            font-size: 18px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <div class="header">
+            <div class="header-logo">
+                <img src="{{ bineyes_logo }}" alt="Bineyes Logo">
+            </div>
+            <div class="header-title">
+                <h1>🧾 إيصال سداد</h1>
+                <p>Payment Receipt</p>
+            </div>
+            <div class="header-logo">
+                <img src="{{ saia_logo }}" alt="SAIA Logo">
+            </div>
+        </div>
+        
+        <div class="invoice-info">
+            <div class="info-row">
+                <span class="info-label">📋 رقم الفاتورة:</span>
+                <span>{{ invoice_number }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">📅 تاريخ الإصدار:</span>
+                <span>{{ issue_date }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">💳 رقم مرجع السداد:</span>
+                <span>{{ sadad_number }}</span>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="receipt-text">
+                ✅ <strong>تم استلام</strong> من العميل صاحب الهوية رقم 
+                <strong>{{ national_id }}</strong> 
+                مبلغاً وقدره 
+                <strong>{{ total_amount }} ريال سعودي</strong>
+                عبر نظام سداد (رقم المرجع: <strong>{{ sadad_number }}</strong>)
+                وذلك مقابل إصدار وثيقة تأمين <strong>{{ coverage_type }}</strong> 
+                على المركبة <strong>{{ vehicle_info }}</strong>
+                لدى شركة <strong>{{ company_name }}</strong>.
+            </div>
+            
+            <table class="details-table">
+                <tr>
+                    <th colspan="2">📊 تفاصيل الفاتورة</th>
+                </tr>
+                <tr>
+                    <td>🏢 شركة التأمين</td>
+                    <td>{{ company_name }}</td>
+                </tr>
+                <tr>
+                    <td>🛡️ نوع التغطية</td>
+                    <td>{{ coverage_type }}</td>
+                </tr>
+                <tr>
+                    <td>🚗 المركبة</td>
+                    <td>{{ vehicle_info }}</td>
+                </tr>
+                <tr>
+                    <td>📅 فترة التأمين</td>
+                    <td>{{ policy_start }} إلى {{ policy_end }}</td>
+                </tr>
+            </table>
+            
+            <div class="total-section">
+                <p>💰 إجمالي المبلغ المدفوع</p>
+                <div class="total-amount">{{ total_amount }} ريال</div>
+                <p style="opacity: 0.8; margin-top: 5px;">شامل ضريبة القيمة المضافة 15%</p>
+            </div>
+            
+            <div class="qr-section">
+                <img src="{{ qr_code }}" alt="QR Code">
+                <p>امسح للتحقق من صحة الفاتورة</p>
+            </div>
+            
+            <div style="text-align: center;">
+                <span class="stamp">✓ تم السداد</span>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>📞 للاستفسارات: support@concord.sa | 🌐 www.concord.sa</p>
+            <p>شركة كونكورد لوساطة التأمين - مرخصة من البنك المركزي السعودي</p>
+            <p style="margin-top: 10px; color: #999;">Powered by SAIA | Bineyes Technology</p>
+        </div>
+    </div>
+</body>
+</html>

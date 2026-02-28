@@ -54,28 +54,29 @@ class ConfirmationStage(BaseStage):
     
     def get_prompt_instructions(self, context: ConversationContext) -> str:
         offer = context.selected_offer or {}
-        price = float(offer.get("price", 0))
-        vat = price * 0.15
-        total = price + vat
+        
+        # استخدام القيم الموجودة في العرض مباشرة (total_premium يتضمن الضريبة)
+        total_premium = float(offer.get("total_premium", 0)) or float(offer.get("price", 0))
+        gross_premium = float(offer.get("gross_premium", 0)) or (total_premium / 1.15)
+        vat_amount = float(offer.get("vat_amount", 0)) or (total_premium - gross_premium)
+        
+        self.logger.info(f"💰 FINAL_CONFIRMATION - total_premium: {total_premium}, gross: {gross_premium}, vat: {vat_amount}")
         
         return f"""⚠️ أنت في مرحلة التأكيد النهائي.
 
 🎯 ملخص الطلب:
 - الشركة: {offer.get('company', 'غير محدد')}
 - نوع التغطية: {offer.get('type', 'غير محدد')}
-- السعر: {price:,.0f} ريال
-- الضريبة: {vat:,.0f} ريال
-- الإجمالي: {total:,.0f} ريال
+- القسط الأساسي: {gross_premium:,.2f} ريال
+- ضريبة القيمة المضافة: {vat_amount:,.2f} ريال
+- 💵 الإجمالي: {total_premium:,.2f} ريال
 
-تعليمات:
-- اسأل التأكيد النهائي بأسلوب ودي
-- أوضح أن الفاتورة ستُصدر بعد التأكيد
-- إذا أكد، انتقل لإصدار الفاتورة
+⛔ تعليمات صارمة:
+- الإجمالي هو بالضبط {total_premium:,.2f} ريال (لا تحسبه من جديد!)
+- لا تضيف ضريبة مرة أخرى - الإجمالي يتضمنها
 
-مثال:
-"ممتاز! 🌟 الإجمالي {total:,.0f} ريال شامل الضريبة.
-
-تبي أصدر لك الفاتورة الآن؟ ✅"
+✅ المطلوب:
+قل فقط: "ممتاز! 🌟 الإجمالي {total_premium:,.2f} ريال شامل الضريبة. تبي أصدر لك الفاتورة الآن؟ ✅"
 """
     
     def handle_intent(
@@ -113,9 +114,10 @@ class ConfirmationStage(BaseStage):
         
         try:
             offer = context.selected_offer or {}
-            price = float(offer.get("price", 0))
-            vat = price * 0.15
-            total = price + vat
+            # استخدام total_premium مباشرة (يتضمن الضريبة)
+            total = float(offer.get("total_premium", 0)) or float(offer.get("price", 0))
+            
+            self.logger.info(f"📦 Creating order with total: {total}")
             
             # إنشاء الطلب
             order = self.order_repo.create_order(

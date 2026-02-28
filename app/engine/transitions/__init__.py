@@ -1,9 +1,9 @@
 """
-Transitions Module - إدارة الانتقالات
+Transitions module - Stage transition management
 """
-from .stage_transitions import StageTransitionManager, stage_transition_manager
+from app.engine.transitions.stage_transitions import StageTransitionManager
 
-__all__ = [
-    "StageTransitionManager",
-    "stage_transition_manager",
-]
+# Create global instance
+stage_transition_manager = StageTransitionManager()
+
+__all__ = ['stage_transition_manager', 'StageTransitionManager']

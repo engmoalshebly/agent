@@ -1,4 +1,6 @@
+
 import { useState, useRef, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../api/client'
 import './ChatPage.css'
@@ -6,28 +8,38 @@ import './ChatPage.css'
 // Stage names in Arabic
 const STAGE_NAMES = {
     greeting: 'الترحيب',
-    collecting_profile: 'جمع البيانات',
+    selecting_service: 'اختيار الخدمة',
+    collecting_profile: 'البيانات الشخصية',
+    confirming_profile: 'تأكيد البيانات',
     collecting_vehicle: 'بيانات السيارة',
-    ask_another_vehicle: 'إضافة سيارة',
+    confirming_vehicle: 'تأكيد السيارة',
     showing_offers: 'عرض العروض',
-    awaiting_selection: 'اختيار العرض',
-    confirmation: 'التأكيد',
-    creating_invoice: 'إنشاء الفاتورة',
-    pending_payment: 'انتظار الدفع',
-    issuing_policy: 'إصدار الوثيقة',
-    done: 'تم ✓'
+    selecting_offer: 'اختيار العرض',
+    order_summary: 'ملخص الطلب',
+    final_confirmation: 'التأكيد النهائي',
+    invoice_issued: 'الفاتورة',
+    payment_done: 'تم الدفع ✓'
 }
 
 function ChatPage() {
     const { user, token, logout } = useAuth()
+    const { conversationId: urlConversationId } = useParams()
+    const navigate = useNavigate()
+
     const [messages, setMessages] = useState([])
     const [input, setInput] = useState('')
-    const [conversationId, setConversationId] = useState(null)
+    const [conversationId, setConversationId] = useState(urlConversationId || null)
     const [currentStage, setCurrentStage] = useState(null)
     const [loading, setLoading] = useState(false)
     const [sidebarOpen, setSidebarOpen] = useState(true)
-    const [showTestData, setShowTestData] = useState(false)
+
+    // قائمة المحادثات السابقة
+    const [conversations, setConversations] = useState([])
+    const [loadingConversations, setLoadingConversations] = useState(false)
+    const [activeConvId, setActiveConvId] = useState(urlConversationId || null)
+
     const messagesEndRef = useRef(null)
+    const inputRef = useRef(null)
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -36,6 +48,75 @@ function ChatPage() {
     useEffect(() => {
         scrollToBottom()
     }, [messages])
+
+    // جلب المحادثات السابقة عند التحميل
+    useEffect(() => {
+        loadConversations()
+    }, [token])
+
+    // تحميل المحادثة من URL عند التحميل الأولي
+    useEffect(() => {
+        if (urlConversationId && token && !messages.length) {
+            loadConversation(urlConversationId)
+        }
+    }, [urlConversationId, token])
+
+    // Focus on input after loading
+    useEffect(() => {
+        if (!loading && inputRef.current) {
+            inputRef.current.focus()
+        }
+    }, [loading])
+
+    const loadConversations = async () => {
+        if (!token) return
+
+        setLoadingConversations(true)
+        try {
+            const result = await api.getConversations(token)
+            if (result.success && result.conversations) {
+                setConversations(result.conversations)
+            }
+        } catch (error) {
+            console.error('Error loading conversations:', error)
+        } finally {
+            setLoadingConversations(false)
+        }
+    }
+
+    // تحديث صامت في الخلفية بدون تأثير على UI
+    const silentLoadConversations = async () => {
+        if (!token) return
+        try {
+            const result = await api.getConversations(token)
+            if (result.success && result.conversations) {
+                setConversations(result.conversations)
+            }
+        } catch (error) {
+            console.error('Error loading conversations:', error)
+        }
+    }
+
+    const loadConversation = async (convId) => {
+        if (!token || convId === activeConvId) return
+
+        setLoading(true)
+        setActiveConvId(convId)
+        try {
+            const result = await api.getConversationMessages(convId, token)
+            if (result.success && result.messages) {
+                setMessages(result.messages)
+                setConversationId(convId)
+                setCurrentStage(result.stage || 'greeting')
+                // تحديث URL
+                navigate(`/chat/${convId}`, { replace: true })
+            }
+        } catch (error) {
+            console.error('Error loading conversation:', error)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const sendMessage = async (messageText) => {
         if (!messageText.trim() || loading) return
@@ -51,6 +132,11 @@ function ChatPage() {
             if (result.success) {
                 if (result.conversation_id) {
                     setConversationId(result.conversation_id)
+                    setActiveConvId(result.conversation_id)
+                    // تحديث URL عند إنشاء محادثة جديدة
+                    if (!conversationId) {
+                        navigate(`/chat/${result.conversation_id}`, { replace: true })
+                    }
                 }
                 if (result.stage) {
                     setCurrentStage(result.stage)
@@ -58,9 +144,14 @@ function ChatPage() {
 
                 const assistantMessage = {
                     role: 'assistant',
-                    content: result.message || 'لا يوجد رد'
+                    content: result.message || 'لا يوجد رد',
+                    has_attachments: result.has_attachments || false,
+                    attachments: result.has_attachments ? result.attachments : []
                 }
                 setMessages(prev => [...prev, assistantMessage])
+
+                // تحديث قائمة المحادثات في الخلفية (صامت)
+                setTimeout(() => silentLoadConversations(), 500)
             } else {
                 const errorMessage = {
                     role: 'assistant',
@@ -84,140 +175,172 @@ function ChatPage() {
         sendMessage(input)
     }
 
-    const handleQuickReply = (text) => {
-        sendMessage(text)
-    }
-
     const handleNewConversation = async () => {
         if (conversationId) {
             await api.resetConversation(conversationId, token)
         }
         setMessages([])
         setConversationId(null)
+        setActiveConvId(null)
         setCurrentStage(null)
+        // العودة للصفحة الرئيسية
+        navigate('/', { replace: true })
+    }
+
+    const formatTime = (dateStr) => {
+        if (!dateStr) return ''
+        try {
+            const date = new Date(dateStr)
+            const now = new Date()
+            const diff = now - date
+
+            if (diff < 60000) return 'الآن'
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}د`
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}س`
+            return date.toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })
+        } catch {
+            return ''
+        }
     }
 
     return (
-        <div className="chat-page">
-            {/* Header */}
-            <header className="chat-header">
-                <div className="header-start">
-                    <button
-                        className="menu-btn"
-                        onClick={() => setSidebarOpen(!sidebarOpen)}
-                    >
+        <div className="chat-app">
+            {/* Sidebar */}
+            <aside className={`sidebar ${sidebarOpen ? 'open' : 'collapsed'}`}>
+                <div className="sidebar-header">
+                    <button className="new-chat-btn" onClick={handleNewConversation}>
+                        <span className="icon">+</span>
+                        <span className="text">محادثة جديدة</span>
+                    </button>
+                    <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
                         ☰
                     </button>
-                    <div className="brand">
-                        <img src="/logo.png" alt="SAIA" className="brand-logo" />
-                    </div>
                 </div>
 
-                <div className="header-center">
-                    {currentStage && (
-                        <div className="stage-badge">
-                            📍 {STAGE_NAMES[currentStage] || currentStage}
+                <div className="conversations-container">
+                    {loadingConversations ? (
+                        <div className="loading-state">
+                            <div className="spinner"></div>
+                        </div>
+                    ) : conversations.length === 0 ? (
+                        <div className="empty-state">
+                            <p>لا توجد محادثات</p>
+                        </div>
+                    ) : (
+                        <div className="conversations-list">
+                            {conversations.map((conv) => (
+                                <div
+                                    key={conv.id}
+                                    className={`conversation-item ${conv.id === activeConvId ? 'active' : ''}`}
+                                    onClick={() => loadConversation(conv.id)}
+                                >
+                                    <span className="conv-icon">💬</span>
+                                    <span className="conv-title">
+                                        {STAGE_NAMES[conv.stage] || conv.stage}
+                                    </span>
+                                    <span className="conv-time">{formatTime(conv.updated_at)}</span>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
 
-                <div className="header-end">
-                    <button
-                        className="btn btn-secondary test-data-btn"
-                        onClick={() => setShowTestData(!showTestData)}
-                        title="بيانات تجريبية"
-                    >
-                        📋
-                    </button>
-                    <div className="user-info">
+                <div className="sidebar-footer">
+                    <div className="user-menu">
+                        <span className="user-avatar">👤</span>
                         <span className="user-name">{user?.name || 'مستخدم'}</span>
+                        <button className="logout-btn" onClick={logout}>خروج</button>
                     </div>
-                    <button className="btn btn-secondary logout-btn" onClick={logout}>
-                        خروج
-                    </button>
                 </div>
-            </header>
+            </aside>
 
-            <div className="chat-layout">
-                {/* Sidebar - Simplified */}
-                <aside className={`chat-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-                    <div className="sidebar-section">
-                        <h3>⚙️ الإعدادات</h3>
-
-                        {conversationId && (
-                            <div className="info-box">
-                                <label>🔗 معرف المحادثة</label>
-                                <code>{conversationId}</code>
-                            </div>
+            {/* Main Chat Area */}
+            <main className="chat-main">
+                {/* Header */}
+                <header className="chat-header">
+                    <button className="mobile-menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
+                        ☰
+                    </button>
+                    <div className="header-title">
+                        <img src="/logo.png" alt="SAIA" className="header-logo" />
+                        {currentStage && (
+                            <span className="stage-indicator">
+                                {STAGE_NAMES[currentStage] || currentStage}
+                            </span>
                         )}
-
-                        <button
-                            className="btn btn-accent btn-full"
-                            onClick={handleNewConversation}
-                        >
-                            🔄 بدء محادثة جديدة
-                        </button>
                     </div>
-                </aside>
+                </header>
 
-                {/* Chat Area */}
-                <main className="chat-main">
-                    <div className="messages-container">
-                        {messages.length === 0 ? (
-                            <div className="welcome-message animate-fade-in">
-                                <div className="welcome-icon">👋</div>
-                                <h2>مرحباً بك!</h2>
-                                <p>اكتب <strong>"السلام عليكم"</strong> أو أي رسالة لبدء المحادثة</p>
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={() => handleQuickReply('السلام عليكم')}
-                                    disabled={loading}
-                                >
-                                    🚀 بدء المحادثة
+                {/* Messages Area */}
+                <div className="messages-area">
+                    {messages.length === 0 ? (
+                        <div className="welcome-screen">
+                            <img src="/logo.png" alt="SAIA" className="welcome-logo-img" />
+                            <h1>SAIA Insurance</h1>
+                            <p>المساعد الذكي لكونكورد للتأمين</p>
+                            <div className="quick-actions">
+                                <button onClick={() => sendMessage('السلام عليكم')}>
+                                    👋 ابدأ المحادثة
+                                </button>
+                                <button onClick={() => sendMessage('أريد تأمين سيارة')}>
+                                    🚗 تأمين سيارة
                                 </button>
                             </div>
-                        ) : (
-                            <>
-                                {messages.map((msg, idx) => (
-                                    <div
-                                        key={idx}
-                                        className={`message ${msg.role} animate-fade-in`}
-                                    >
-                                        <div className="message-avatar">
-                                            {msg.role === 'user' ? '👤' : '🤖'}
+                        </div>
+                    ) : (
+                        <div className="messages-scroll">
+                            {messages.map((msg, idx) => (
+                                <div key={idx} className={`message ${msg.role}`}>
+                                    <div className="message-avatar">
+                                        {msg.role === 'user' ? '👤' : '🤖'}
+                                    </div>
+                                    <div className="message-content">
+                                        <div className="message-text">
+                                            {msg.content.split('\n').map((line, i) => (
+                                                <p key={i}>{line || '\u00A0'}</p>
+                                            ))}
                                         </div>
-                                        <div className="message-content">
-                                            <div className="message-bubble">
-                                                {msg.content.split('\n').map((line, i) => (
-                                                    <p key={i}>{line}</p>
+                                        {msg.has_attachments === true && msg.attachments && msg.attachments.length > 0 && (
+                                            <div className="attachments">
+                                                {msg.attachments.map((attach, i) => (
+                                                    <a
+                                                        key={i}
+                                                        href={attach.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className={`attachment-link ${attach.type}`}
+                                                    >
+                                                        {attach.name}
+                                                    </a>
                                                 ))}
                                             </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            {loading && (
+                                <div className="message assistant">
+                                    <div className="message-avatar">🤖</div>
+                                    <div className="message-content">
+                                        <div className="typing-indicator">
+                                            <span></span><span></span><span></span>
                                         </div>
                                     </div>
-                                ))}
-                                {loading && (
-                                    <div className="message assistant animate-fade-in">
-                                        <div className="message-avatar">🤖</div>
-                                        <div className="message-content">
-                                            <div className="message-bubble typing">
-                                                <span></span>
-                                                <span></span>
-                                                <span></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                                <div ref={messagesEndRef} />
-                            </>
-                        )}
-                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+                    )}
+                </div>
 
-                    {/* Input Area */}
-                    <form className="chat-input-area" onSubmit={handleSubmit}>
+                {/* Input Area */}
+                <div className="input-area">
+                    <form className="input-form" onSubmit={handleSubmit}>
                         <input
+                            ref={inputRef}
                             type="text"
-                            className="chat-input"
-                            placeholder="اكتب رسالتك هنا..."
+                            className="message-input"
+                            placeholder="اكتب رسالتك..."
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             disabled={loading}
@@ -227,36 +350,12 @@ function ChatPage() {
                             className="send-btn"
                             disabled={loading || !input.trim()}
                         >
-                            {loading ? '...' : '📤'}
+                            ➤
                         </button>
                     </form>
-                </main>
-            </div>
-
-            {/* Test Data Modal */}
-            {showTestData && (
-                <div className="modal-overlay" onClick={() => setShowTestData(false)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h3>📋 بيانات تجريبية</h3>
-                            <button className="modal-close" onClick={() => setShowTestData(false)}>×</button>
-                        </div>
-                        <div className="modal-body test-data">
-                            <code>الهوية: 1122334455</code>
-                            <code>الميلاد: 1990/03/25</code>
-                            <code>الجوال: 0501234567</code>
-                            <code>اللوحة: س ك ر 5678</code>
-                            <code>السيارة: هيونداي سوناتا 2021</code>
-                            <code>القيمة: 85000</code>
-                        </div>
-                    </div>
+                    <p className="disclaimer">SAIA - المساعد الذكي لكونكورد للتأمين</p>
                 </div>
-            )}
-
-            {/* Footer */}
-            <footer className="chat-footer">
-                🛡️ SAIA Insurance Broker Platform v2.0 | Powered by React + FastAPI
-            </footer>
+            </main>
         </div>
     )
 }

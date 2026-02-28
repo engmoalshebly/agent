@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application Settings"""
     
     # API
-    API_TITLE: str = "SAIA Insurance Broker API"
+    API_TITLE: str = "SAIA - كونكر لوساطة التأمين | Bineyes"
     API_VERSION: str = "2.0.0"
     API_PREFIX: str = "/api/v1"
     DEBUG: bool = False
@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # Observability
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
+
+    # WhatsApp Cloud API
+    WHATSAPP_VERIFY_TOKEN: Optional[str] = None
+    WHATSAPP_API_TOKEN: Optional[str] = None
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_APP_SECRET: Optional[str] = None
+    WHATSAPP_API_VERSION: str = "v21.0"
     
     # PostgreSQL Pool & Timeouts
     DB_POOL_SIZE: int = 5

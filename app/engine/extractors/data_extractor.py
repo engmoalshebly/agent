@@ -233,18 +233,21 @@ class StageAwareDataExtractor:
         
         fields_text = "\n".join(fields_desc) if fields_desc else "لا توجد حقول محددة"
         
-        prompt = f"""أنت مستخرج بيانات دقيق. المرحلة الحالية: {stage.value}
+        prompt = f"""أنت مستخرج بيانات دقيق جداً. المرحلة الحالية: {stage.value}
 
 # المرحلة: {schema.get('description', stage.value)}
 
 # الحقول المطلوب استخراجها:
 {fields_text}
 
-# القواعد:
+# القواعد الصارمة:
 1. استخرج فقط الحقول المذكورة أعلاه
 2. أرجع JSON فقط بدون أي نص
 3. لا تضع حقل إذا لم تجده في الرسالة
 4. افهم اللهجة السعودية
+5. ⚠️ لا تخترع أو تضيف أو تغير أي بيانات - استخرج فقط ما هو موجود بالضبط
+6. ⚠️ إذا كانت اللوحة "ا ب ت 123" لا تضيف رقم رابع!
+7. ⚠️ إذا كانت القيمة "56000" لا تغيرها لـ "5600" أو "560000"
 
 # تحويلات مهمة:
 - "شامل" → service_type: "comprehensive"
@@ -258,7 +261,7 @@ class StageAwareDataExtractor:
 # رسالة المستخدم:
 {message}
 
-# أرجع JSON فقط:
+# أرجع JSON فقط (بدون أي نص إضافي):
 """
         return prompt
     
@@ -291,7 +294,7 @@ class StageAwareDataExtractor:
             return {}
     
     def _validate_and_convert(self, data: Dict, schema: Dict) -> Dict[str, Any]:
-        """التحقق من البيانات وتحويل الأنواع"""
+        """التحقق من البيانات وتحويل الأنواع مع validation صارم"""
         result = {}
         
         for field_info in schema.get("fields", []):
@@ -303,21 +306,68 @@ class StageAwareDataExtractor:
             
             value = data[field_name]
             
-            # تحويل حسب النوع
+            # تحويل حسب النوع مع validation
             try:
                 if field_type == "integer":
-                    result[field_name] = int(value)
+                    int_val = int(value)
+                    # Validation للسنة
+                    if field_name == "year":
+                        if 2000 <= int_val <= 2030:
+                            result[field_name] = int_val
+                        else:
+                            self.logger.warning(f"⚠️ Invalid year: {int_val}")
+                    else:
+                        result[field_name] = int_val
+                
                 elif field_type == "number":
-                    val_str = str(value).replace(",", "").replace("،", "")
-                    result[field_name] = float(val_str)
-                    # للتوافق مع الكود القديم
+                    val_str = str(value).replace(",", "").replace("،", "").strip()
+                    float_val = float(val_str)
+                    
+                    # Validation للقيمة
                     if field_name == "value":
-                        result["price"] = result[field_name]
+                        # قيمة السيارة يجب أن تكون بين 10,000 و 500,000 ريال
+                        if 10000 <= float_val <= 500000:
+                            result[field_name] = float_val
+                            result["price"] = float_val  # للتوافق
+                        else:
+                            self.logger.warning(f"⚠️ Invalid vehicle value: {float_val}")
+                    else:
+                        result[field_name] = float_val
+                
                 elif field_type == "boolean":
                     result[field_name] = bool(value)
+                
                 else:
-                    result[field_name] = str(value).strip()
-            except (ValueError, TypeError):
+                    str_val = str(value).strip()
+                    
+                    # Validation للوحة
+                    if field_name == "plate_no":
+                        # يجب أن تكون 3 أحرف عربية + 1-4 أرقام
+                        if self._validate_plate(str_val):
+                            result[field_name] = str_val
+                        else:
+                            self.logger.warning(f"⚠️ Invalid plate: {str_val}")
+                    
+                    # Validation للهوية
+                    elif field_name == "national_id":
+                        # يجب أن تكون 10 أرقام تبدأ بـ 1 أو 2
+                        if self._validate_national_id(str_val):
+                            result[field_name] = str_val
+                        else:
+                            self.logger.warning(f"⚠️ Invalid national ID: {str_val}")
+                    
+                    # Validation للجوال
+                    elif field_name == "phone":
+                        if self._validate_phone(str_val):
+                            result[field_name] = str_val
+                        else:
+                            self.logger.warning(f"⚠️ Invalid phone: {str_val}")
+                    
+                    else:
+                        result[field_name] = str_val
+            
+            except (ValueError, TypeError) as e:
+                self.logger.warning(f"⚠️ Conversion error for {field_name}: {e}")
                 pass
         
         # التعامل مع حقول إضافية ليست في الـ schema
@@ -326,6 +376,45 @@ class StageAwareDataExtractor:
                 result[key] = data[key]
         
         return result
+    
+    def _validate_plate(self, plate: str) -> bool:
+        """التحقق من صحة رقم اللوحة السعودية"""
+        # إزالة المسافات
+        plate_clean = plate.replace(" ", "")
+        
+        # Pattern: 3 أحرف عربية + 1-4 أرقام
+        # أو: 1-4 أرقام + 3 أحرف عربية
+        patterns = [
+            r'^[ا-ي]{3}\d{1,4}$',  # أبت123
+            r'^\d{1,4}[ا-ي]{3}$',  # 123أبت
+        ]
+        
+        for pattern in patterns:
+            if re.match(pattern, plate_clean):
+                return True
+        
+        return False
+    
+    def _validate_national_id(self, national_id: str) -> bool:
+        """التحقق من صحة رقم الهوية السعودية"""
+        # يجب أن يكون 10 أرقام تبدأ بـ 1 (سعودي) أو 2 (مقيم)
+        if not re.match(r'^[12]\d{9}$', national_id):
+            return False
+        return True
+    
+    def _validate_phone(self, phone: str) -> bool:
+        """التحقق من صحة رقم الجوال السعودي"""
+        # إزالة المسافات والرموز
+        phone_clean = re.sub(r'[^\d]', '', phone)
+        
+        # يجب أن يبدأ بـ 05 ويكون 10 أرقام
+        # أو يبدأ بـ 9665 ويكون 12 رقم
+        if re.match(r'^05\d{8}$', phone_clean):
+            return True
+        if re.match(r'^9665\d{8}$', phone_clean):
+            return True
+        
+        return False
     
     def _extract_fallback(self, message: str) -> Dict[str, Any]:
         """استخراج بسيط كـ fallback"""
@@ -339,31 +428,99 @@ class StageAwareDataExtractor:
                 result["year"] = year
         
         # القيمة
-        for pattern in [r'(\d{1,3}(?:[,،]\d{3})*)\s*ريال', r'قيمت?ها?\s*[:=]?\s*(\d+)']:
+        for pattern in [r'(\d{1,3}(?:[,،]\d{3})*)\s*ريال', r'قيمت?ها?\s*[:=]?\s*(\d+)', r'ب[ـ\s]*(\d+)\s*(?:الف|ألف)?']:
             match = re.search(pattern, message)
             if match:
                 val = match.group(1).replace(",", "").replace("،", "")
                 try:
-                    result["price"] = float(val)
-                    result["value"] = result["price"]
+                    value = float(val)
+                    # إذا كان أقل من 1000 يعني بالآلاف
+                    if value < 1000:
+                        value = value * 1000
+                    result["price"] = value
+                    result["value"] = value
                     break
                 except ValueError:
                     pass
         
-        # اللوحة
-        plate_match = re.search(r'([ا-ي]\s*[ا-ي]\s*[ا-ي])\s*(\d{1,4})', message)
-        if plate_match:
-            result["plate_no"] = f"{plate_match.group(1).replace(' ', '')} {plate_match.group(2)}"
+        # اللوحة (مع validation صارم: 3 أحرف عربية + 1-4 أرقام فقط)
+        plate_patterns = [
+            # Pattern 1: أ ب ت 123 (مع مسافات)
+            r'([ا-ي])\s+([ا-ي])\s+([ا-ي])\s+(\d{1,4})(?!\d)',  # (?!\d) = لا يتبعه رقم آخر
+            # Pattern 2: 123 أ ب ت (مع مسافات)
+            r'(\d{1,4})(?!\d)\s+([ا-ي])\s+([ا-ي])\s+([ا-ي])',
+            # Pattern 3: اللوحة: أ ب ت 123
+            r'اللوحة?\s*[:=]?\s*([ا-ي])\s+([ا-ي])\s+([ا-ي])\s+(\d{1,4})(?!\d)',
+            # Pattern 4: أبت123 (بدون مسافات)
+            r'([ا-ي])([ا-ي])([ا-ي])(\d{1,4})(?!\d)',
+        ]
         
-        # الهوية
-        id_match = re.search(r'\b([12]\d{9})\b', message)
-        if id_match:
-            result["national_id"] = id_match.group(1)
+        for pattern in plate_patterns:
+            plate_match = re.search(pattern, message)
+            if plate_match:
+                groups = plate_match.groups()
+                if len(groups) == 4:
+                    # التحقق: هل الأرقام أولاً أم الأحرف؟
+                    if groups[0].isdigit():
+                        # الأرقام أولاً: 123 أ ب ت
+                        numbers = groups[0]
+                        letters = groups[1] + groups[2] + groups[3]
+                    else:
+                        # الأحرف أولاً: أ ب ت 123
+                        letters = groups[0] + groups[1] + groups[2]
+                        numbers = groups[3]
+                    
+                    # التحقق من الطول
+                    if len(numbers) <= 4 and len(letters) == 3:
+                        plate = f"{letters} {numbers}"
+                        result["plate_no"] = plate
+                        result["plate_valid"] = True
+                        self.logger.info(f"✅ Extracted plate: {plate}")
+                        break
+        
+        # الهوية (مع validation: 10 أرقام تبدأ بـ 1 أو 2)
+        id_patterns = [
+            r'هوي(?:تي|ه)?\s*[:=]?\s*([12]\d{9})',  # هويتي 1234567890
+            r'\b([12]\d{9})\b',  # أي رقم من 10 أرقام يبدأ بـ 1 أو 2
+        ]
+        for pattern in id_patterns:
+            id_match = re.search(pattern, message)
+            if id_match:
+                national_id = id_match.group(1)
+                # التحقق: 10 أرقام + يبدأ بـ 1 (سعودي) أو 2 (مقيم)
+                if len(national_id) == 10 and national_id[0] in ['1', '2']:
+                    result["national_id"] = national_id
+                    result["id_valid"] = True
+                    result["id_type"] = "saudi" if national_id[0] == '1' else "resident"
+                    break
+        
+        # تاريخ الميلاد
+        date_patterns = [
+            r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})',  # YYYY-MM-DD
+            r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})',  # DD-MM-YYYY
+            r'ميلادي?\s*[:=]?\s*(\d{4})[/-](\d{1,2})[/-](\d{1,2})',
+        ]
+        for pattern in date_patterns:
+            date_match = re.search(pattern, message)
+            if date_match:
+                groups = date_match.groups()
+                # تحديد الترتيب
+                if len(groups[0]) == 4:
+                    year, month, day = groups[0], groups[1], groups[2]
+                else:
+                    day, month, year = groups[0], groups[1], groups[2]
+                try:
+                    y, m, d = int(year), int(month), int(day)
+                    if 1950 <= y <= 2010 and 1 <= m <= 12 and 1 <= d <= 31:
+                        result["birth_date"] = f"{y:04d}-{m:02d}-{d:02d}"
+                        break
+                except ValueError:
+                    pass
         
         # التأكيد
-        if any(w in message for w in ["نعم", "اوكي", "تمام", "موافق", "اعتمد", "صحيح"]):
+        if any(w in message for w in ["نعم", "اوكي", "تمام", "موافق", "اعتمد", "صحيح", "أكمل", "نكمل"]):
             result["confirmation"] = True
-        if any(w in message for w in ["لا", "الغي", "ما ابي"]):
+        if any(w in message for w in ["لا", "الغي", "ما ابي", "مابي"]):
             result["confirmation"] = False
         
         # نوع الخدمة
@@ -376,8 +533,9 @@ class StageAwareDataExtractor:
         
         # اسم الشركة
         companies = {
-            "راجحي": "الراجحي", "تعاونية": "التعاونية", 
-            "ميدغلف": "ميدغلف", "ولاء": "ولاء", "سلامة": "سلامة"
+            "راجحي": "تكافل الراجحي", "تعاونية": "التعاونية", 
+            "ميدغلف": "ميدغلف", "ولاء": "ولاء", "سلامة": "سلامة",
+            "ملاذ": "ملاذ", "أسيج": "أسيج", "الخليجية": "الخليجية"
         }
         for key, val in companies.items():
             if key in message:

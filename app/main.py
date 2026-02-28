@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title=settings.API_TITLE,
     version=settings.API_VERSION,
-    description="منصة وسيط التأمين الذكي - SAIA Insurance Broker Platform",
+    description="منصة SAIA لوساطة التأمين - شركة كونكر | Powered by Bineyes",
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
 
 # CORS middleware
 app.add_middleware(
@@ -83,13 +84,16 @@ async def shutdown():
 
 @app.get("/", tags=["Root"])
 async def root():
-    """Root endpoint"""
+    """نقطة الدخول الرئيسية"""
     return {
-        "message": "مرحباً بك في منصة وسيط التأمين الذكي",
+        "message": "مرحباً بك في SAIA - منصة كونكر لوساطة التأمين",
         "name": settings.API_TITLE,
         "version": settings.API_VERSION,
+        "company": "شركة كونكر لوساطة التأمين",
+        "powered_by": "Bineyes",
         "docs": "/docs"
     }
+
 
 
 @app.get("/health", tags=["Health"])

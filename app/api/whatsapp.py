@@ -46,7 +46,7 @@ async def verify_webhook(
 ):
     """
     WhatsApp webhook verification.
-    Called by WhatsApp to verify the webhook URL.
+    Called by Meta to verify the webhook URL.
     """
     params = request.query_params
     
@@ -54,117 +54,106 @@ async def verify_webhook(
     token = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
     
-    # For demo, accept any verification
-    # In production, verify against configured token
-    if mode == "subscribe":
-        logger.info("WhatsApp webhook verified")
+    # Verify the token against our configuration
+    if mode == "subscribe" and token == settings.WHATSAPP_VERIFY_TOKEN:
+        logger.info("WhatsApp webhook verified successfully")
         return int(challenge) if challenge else "verified"
     
+    logger.warning(f"Verification failed. Expected {settings.WHATSAPP_VERIFY_TOKEN}, got {token}")
     raise HTTPException(status_code=403, detail="Verification failed")
 
 
 @router.post("/whatsapp/webhook")
 async def receive_webhook(request: Request):
     """
-    Receive incoming WhatsApp messages.
-    
-    This endpoint:
-    1. Receives the webhook payload
-    2. Extracts the message
-    3. Processes it through the stage manager
-    4. Returns response for sending back to user
+    Receive incoming WhatsApp messages from Meta Cloud API.
     """
+    # 1. Signature Validation
+    signature = request.headers.get("X-Hub-Signature-256")
+    if not signature:
+        logger.error("Missing X-Hub-Signature-256 header")
+        raise HTTPException(status_code=401, detail="Missing signature")
+        
+    body_bytes = await request.body()
+    from app.services.whatsapp_service import whatsapp_service
+    
+    if not whatsapp_service.verify_signature(body_bytes, signature):
+        logger.error("Invalid signature detected")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    # 2. Process Payload
     try:
         payload = await request.json()
         logger.info(f"WhatsApp webhook received: {payload}")
-        
-        # Extract message from payload (structure depends on provider)
-        # This is a simplified version - adjust based on your WhatsApp provider
         
         message_data = extract_message_from_payload(payload)
         
         if not message_data:
             return {"status": "no_message"}
         
-        # Process through stage manager
+        user_phone = message_data['from']
+        user_message = message_data['text']
+        
+        # 3. Call Existing AI Agent Logic
+        # We manually call professional_engine as the endpoint does
+        from app.engine.professional_engine import professional_engine as stage_manager
+        
+        # Mapping to the existing Chat logic
+        conversation_id = f"wa_{user_phone}"
+        
         result = await stage_manager.process_message(
-            conversation_id=f"wa_{message_data['from']}",
-            message=message_data['text'],
-            phone=message_data['from']
+            conversation_id=conversation_id,
+            message=user_message,
+            phone=user_phone
         )
         
-        # Return response for sending
-        return {
-            "status": "processed",
-            "to": message_data['from'],
-            "response": result.response_message,
-            "stage": result.next_stage.value if result.next_stage else None
-        }
+        # 4. Send Response Back via WhatsApp Service
+        if result.response_message:
+            await whatsapp_service.send_text_message(
+                to=user_phone,
+                text=result.response_message
+            )
+        
+        return {"status": "success"}
         
     except Exception as e:
-        logger.exception(f"WhatsApp webhook error: {e}")
+        logger.exception(f"WhatsApp webhook processing error: {e}")
         return {"status": "error", "message": str(e)}
 
 
 def extract_message_from_payload(payload: Dict[str, Any]) -> Optional[Dict[str, str]]:
     """
-    Extract message from WhatsApp webhook payload.
-    Adjust based on your WhatsApp provider (Cloud API, Business API, etc.)
+    Extract message from Meta Cloud API webhook payload.
     """
     try:
-        # Meta Cloud API structure
         if "entry" in payload:
-            entries = payload.get("entry", [])
-            if entries:
-                changes = entries[0].get("changes", [])
-                if changes:
-                    value = changes[0].get("value", {})
-                    messages = value.get("messages", [])
-                    if messages:
-                        msg = messages[0]
-                        return {
-                            "from": msg.get("from", ""),
-                            "text": msg.get("text", {}).get("body", ""),
-                            "id": msg.get("id", ""),
-                            "timestamp": msg.get("timestamp", "")
-                        }
-        
-        # Direct message format (for testing)
-        if "from" in payload and "text" in payload:
-            return {
-                "from": payload["from"],
-                "text": payload["text"],
-                "id": payload.get("id", ""),
-                "timestamp": payload.get("timestamp", "")
-            }
-        
+            for entry in payload.get("entry", []):
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
+                    if "messages" in value:
+                        msg = value["messages"][0]
+                        if "text" in msg:
+                            return {
+                                "from": msg.get("from", ""),
+                                "text": msg.get("text", {}).get("body", ""),
+                                "id": msg.get("id", ""),
+                                "timestamp": msg.get("timestamp", "")
+                            }
     except Exception as e:
-        logger.error(f"Error extracting message: {e}")
+        logger.error(f"Error parsing Meta payload: {e}")
     
     return None
 
 
-@router.post("/whatsapp/send")
-async def send_message(
+@router.post("/whatsapp/send", include_in_schema=False)
+async def send_message_manual(
     to: str,
     message: str
 ):
-    """
-    Send a WhatsApp message.
-    
-    This is a placeholder - implement based on your WhatsApp provider.
-    """
-    logger.info(f"Sending message to {to}: {message[:50]}...")
-    
-    # In production, call WhatsApp API here
-    # Example with Meta Cloud API:
-    # response = await whatsapp_client.send_message(to, message)
-    
-    return {
-        "success": True,
-        "to": to,
-        "message_sent": message[:100] + "..." if len(message) > 100 else message
-    }
+    """Manual trigger to send message via WhatsApp Service"""
+    from app.services.whatsapp_service import whatsapp_service
+    success = await whatsapp_service.send_text_message(to, message)
+    return {"success": success}
 
 
 @router.post("/whatsapp/test")
@@ -173,9 +162,9 @@ async def test_message(
     message: str
 ):
     """
-    Test endpoint - simulate receiving a WhatsApp message.
-    Useful for testing without actual WhatsApp integration.
+    Simulated test endpoint for development.
     """
+    from app.engine.professional_engine import professional_engine as stage_manager
     result = await stage_manager.process_message(
         conversation_id=f"wa_{phone}",
         message=message,
@@ -186,6 +175,5 @@ async def test_message(
         "success": result.success,
         "input": message,
         "response": result.response_message,
-        "stage": result.next_stage.value if result.next_stage else None,
         "phone": phone
     }

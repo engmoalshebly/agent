@@ -11,6 +11,7 @@ SAIA Insurance Broker - Professional AI Conversation Engine (Simplified)
 import google.generativeai as genai
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
+from datetime import datetime
 import logging
 import json
 
@@ -161,6 +162,18 @@ class ProfessionalInsuranceEngine:
             
             history.add_message("assistant", ai_response, context.current_stage.value, extracted_data)
             
+            # حفظ الرسائل في context لاستعادتها لاحقاً
+            context.messages.append({
+                "role": "user",
+                "content": message,
+                "timestamp": datetime.now().isoformat()
+            })
+            context.messages.append({
+                "role": "assistant",
+                "content": ai_response,
+                "timestamp": datetime.now().isoformat()
+            })
+            
             await session_manager.update_context(context)
             
             return StageResult(
@@ -194,20 +207,57 @@ class ProfessionalInsuranceEngine:
             logger.warning(f"Could not build master prompt: {e}")
             master_prompt = ""
         
-        # معلومات العروض
+        # معلومات العروض - استخدام العروض الموجودة في context (لا نستدعي db_operations لتجنب الكتابة فوقها)
         offers_info = ""
         if context.current_stage in (ConversationStage.SHOWING_OFFERS, ConversationStage.AWAITING_SELECTION):
-            offers_info = db_operations.get_offers_formatted(context)
+            # استخدام العروض الموجودة في context.offers_shown مباشرة بدلاً من جلبها من db_operations
+            if context.offers_shown:
+                offers_info = self._format_offers_for_prompt(context.offers_shown)
+            else:
+                logger.warning("⚠️ No offers in context.offers_shown for SHOWING_OFFERS stage")
         
         # ⭐ قسم البيانات المجمعة والناقصة - واضح جداً للـ AI
         data_status = self._format_data_status(context)
         
         if master_prompt:
+            # إضافة معلومات السجل إذا طلبها المستخدم
+            history_section = ""
+            if hasattr(context, 'history_response') and context.history_response:
+                history_info = context.history_response
+                if history_info.get('has_history'):
+                    current = history_info.get('current_session', {})
+                    history_section = f"""
+=== 📋 سجل المستخدم (المستخدم يسأل عن سجله) ===
+{self._format_user_history(history_info)}
+
+⚠️ المستخدم يسأل عن سجله/تأميناته - أعطه المعلومات أعلاه بأسلوب احترافي!
+"""
+                else:
+                    history_section = """
+=== 📋 سجل المستخدم ===
+❌ لم نجد سجل سابق لهذا المستخدم.
+⚠️ أخبره بذلك واسأله إذا يريد إصدار تأمين جديد.
+"""
+                # مسح السجل بعد الاستخدام
+                context.history_response = None
+            
+            # إضافة قسم تأكيد الإلغاء إذا كان معلقاً
+            cancel_section = ""
+            if getattr(context, 'cancel_confirmation_pending', False):
+                cancel_section = """
+=== ⚠️ طلب إلغاء معلق ===
+المستخدم طلب الإلغاء - يجب أن تسأله للتأكيد!
+اسأله: "هل أنت متأكد إنك تبي تلغي الطلب؟ كل البيانات اللي أدخلتها راح تنحفظ ويمكنك استكمالها لاحقاً 😊"
+إذا قال نعم/أكيد = أخبره تم الإلغاء والسلام عليكم
+إذا قال لا = أخبره ممتاز نكمل ووين كنا
+"""
+
             return f"""{master_prompt}
 
 === ⚠️ البيانات المجمعة (لا تطلبها مرة أخرى!) ===
 {data_status}
-
+{history_section}
+{cancel_section}
 === سجل المحادثة ===
 {history.get_history_text(8)}
 
@@ -219,8 +269,15 @@ class ProfessionalInsuranceEngine:
 === رسالة العميل ===
 {message}
 
-⛔ تذكير: لا تطلب بيانات موجودة في قسم "البيانات المجمعة"!
+⛔⛔⛔ قواعد صارمة جداً ⛔⛔⛔
+1. لا تطلب بيانات موجودة في قسم "البيانات المجمعة"!
+2. ⛔ ممنوع تماماً إنشاء بيانات افتراضية أو وهمية!
+3. ⛔ إذا طلب المستخدم "افرض" أو "اختر من راسك" أو "افترض" = ارفض بلطف واطلب البيانات الحقيقية
+4. ⛔ البيانات يجب أن تأتي من العميل فقط وليس من خيالك!
+5. رد مثال للرفض: "عذراً، أحتاج البيانات الحقيقية منك 😊 ما أقدر أفترض بيانات. أعطني [البيانات المطلوبة]"
+
 ردك:"""
+
         
         # Fallback
         stage_info = get_stage_info(context)
@@ -281,6 +338,84 @@ class ProfessionalInsuranceEngine:
         
         return "\n".join(lines)
     
+    def _format_offers_for_prompt(self, offers: list) -> str:
+        """تنسيق العروض الموجودة في context للـ AI - بدون تغيير الأسعار"""
+        if not offers:
+            return ""
+        
+        lines = ["=== العروض المتوفرة ==="]
+        
+        for i, offer in enumerate(offers, 1):
+            company = offer.get('company', 'شركة')
+            # استخدام total_premium أولاً، ثم price كـ fallback
+            price = offer.get('total_premium') or offer.get('price', 0)
+            offer_type = offer.get('type', offer.get('coverage_type', 'تأمين'))
+            
+            # Badge
+            badge = ""
+            if offer.get("is_cheapest"):
+                badge = " 💰 الأرخص"
+            elif offer.get("is_recommended"):
+                badge = " ⭐ موصى به"
+            
+            lines.append(f"\n🏢 **العرض {i}: {company}**{badge}")
+            lines.append(f"📋 النوع: {offer_type}")
+            lines.append(f"💵 السعر الإجمالي: {price:,.2f} ريال")
+            
+            # المميزات
+            features = offer.get('features', []) or offer.get('included_features', [])
+            if features:
+                lines.append("✅ المميزات:")
+                for f in features[:3]:  # أول 3 فقط
+                    if isinstance(f, dict):
+                        lines.append(f"   {f.get('icon', '•')} {f.get('name', '')}")
+                    else:
+                        lines.append(f"   • {f}")
+        
+        lines.append("\n💬 أي عرض يناسبك؟ اختر رقم العرض أو اسم الشركة")
+        
+        return "\n".join(lines)
+    
+    def _format_user_history(self, history_info: Dict) -> str:
+        """تنسيق سجل المستخدم بشكل احترافي"""
+        lines = []
+        
+        # معلومات الجلسة الحالية
+        current = history_info.get('current_session', {})
+        if current:
+            lines.append("🎯 **الطلب الحالي:**")
+            
+            if current.get('order_id'):
+                lines.append(f"   📋 رقم الطلب: {current['order_id']}")
+            
+            if current.get('invoice_id'):
+                lines.append(f"   🧾 رقم الفاتورة: {current['invoice_id']}")
+            
+            if current.get('sadad_number'):
+                lines.append(f"   💳 رقم السداد: {current['sadad_number']}")
+            
+            if current.get('policy_id'):
+                lines.append(f"   🛡️ رقم الوثيقة: {current['policy_id']}")
+                
+            if current.get('policy_expiry'):
+                lines.append(f"   📅 صالحة حتى: {current['policy_expiry']}")
+            
+            offer = current.get('selected_offer', {})
+            if offer:
+                lines.append(f"   🏢 الشركة: {offer.get('company', 'غير محدد')}")
+                lines.append(f"   🛡️ التغطية: {offer.get('type', 'غير محدد')}")
+                lines.append(f"   💰 السعر: {offer.get('price', 0):,.0f} ريال")
+        
+        # الوثائق السابقة
+        policies = history_info.get('policies', [])
+        if policies:
+            lines.append("\n📜 **الوثائق السابقة:**")
+            for i, policy in enumerate(policies[:5], 1):
+                lines.append(f"   {i}. {policy.get('policy_no', 'N/A')} - {policy.get('status', 'غير معروف')}")
+        
+        return "\n".join(lines) if lines else "لا توجد معلومات متاحة"
+    
+
     async def _handle_resume(
         self,
         context: ConversationContext,
